@@ -255,3 +255,38 @@ frame();
 
 // for debugging from the console
 (window as any).rk = { game, world, camera, renderer, perf };
+
+// ?debug: an on-screen log of what taps actually hit — for chasing phone-only bugs
+if (new URLSearchParams(location.search).has("debug")) {
+  const box = document.createElement("div");
+  box.id = "debug-log";
+  document.body.appendChild(box);
+  const lines: string[] = [];
+  const name = (el: EventTarget | null) => {
+    const e = el as HTMLElement | null;
+    if (!e?.tagName) return String(el);
+    const label = (e.innerText || "").trim().split("\n")[0]!.slice(0, 18);
+    return `${e.tagName.toLowerCase()}${e.id ? "#" + e.id : ""}${e.className && typeof e.className === "string" ? "." + e.className.trim().split(/\s+/).join(".") : ""}${label ? ` "${label}"` : ""}`;
+  };
+  const log = (s: string) => {
+    lines.push(`${(performance.now() / 1000).toFixed(1)} ${s}`);
+    if (lines.length > 14) lines.shift();
+    box.textContent = lines.join("\n");
+  };
+  for (const type of ["pointerdown", "pointerup", "pointercancel", "click"] as const) {
+    document.addEventListener(
+      type,
+      (e) => log(`${type}${"pointerType" in e ? `(${(e as PointerEvent).pointerType})` : ""} ${e.isTrusted ? "" : "[synth] "}→ ${name(e.target)}`),
+      true,
+    );
+  }
+  const origToast = game.toast.bind(game);
+  game.toast = (t: string) => {
+    log(`toast: ${t}`);
+    origToast(t);
+  };
+  setInterval(() => {
+    const me = game.snap?.me;
+    box.dataset.state = `phase=${game.snap?.phase} overlay=${game.overlayName} nest=${me?.nest} vent=${me?.vent} pos=${game.x.toFixed(1)},${game.z.toFixed(1)} server=${me?.x.toFixed(1)},${me?.z.toFixed(1)}`;
+  }, 250);
+}

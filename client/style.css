@@ -1199,3 +1199,27 @@ body.touch #prompt {
 @keyframes nudge {
   50% { transform: translate(-50%, -3px); }
 }
+
+.pick-cancel {
+  margin-top: 4px;
+  border-color: #5a4a60;
+}
+#debug-log {
+  position: fixed;
+  left: 4px;
+  bottom: 4px;
+  z-index: 200;
+  max-width: 62vw;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #7dff6a;
+  font: 11px/1.25 monospace;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+#debug-log::before {
+  content: attr(data-state);
+  display: block;
+  color: #ffd84a;
+  margin-bottom: 2px;
+}

@@ -46,6 +46,14 @@ export interface SocketData {
 type Sock = ServerWebSocket<SocketData>;
 
 const REVEAL_SECONDS = 4;
+/**
+ * Movement is a budget, not a per-message cap: phones on mobile data deliver position
+ * updates in bunches, and a per-message cap used to drop the distance in each bunch —
+ * the server's robot fell metres behind and then refused elevators, stations and kills.
+ * The budget refills at a little over walking speed, so catching up is fine but
+ * teleporting isn't.
+ */
+const MOVE_BUDGET_CAP = MOVE_SPEED * 1.25;
 const EJECTION_SECONDS = 6;
 const LOBBY_GRACE = 15;
 const GAME_GRACE = 45;
@@ -64,6 +72,8 @@ export class Player {
   ry = 0;
   moving = false;
   lastPosAt = now();
+  /** Metres this robot may still move: refills at walking speed, spent by position updates. */
+  moveBudget = MOVE_BUDGET_CAP;
   tp = 0;
 
   alive = true;
@@ -111,6 +121,12 @@ export class Player {
     this.x = x;
     this.z = z;
     this.tp++;
+    this.moveBudget = MOVE_BUDGET_CAP;
+  }
+
+  /** Short feedback for an action the server refused. */
+  deny(text: string) {
+    this.send({ t: "toast", text });
   }
 }
 
@@ -299,18 +315,21 @@ export class Lobby {
         if (p.hidden || p.using) return;
         if (!Number.isFinite(m.x) || !Number.isFinite(m.z)) return;
         // Trust the client's movement, but never further than it could have gone.
-        const dt = Math.min(0.5, t - p.lastPosAt);
+        const speed = MOVE_SPEED * (p.alive ? 1 : 1.6);
+        const cap = MOVE_BUDGET_CAP * (p.alive ? 1 : 1.6);
+        p.moveBudget = Math.min(cap, p.moveBudget + (t - p.lastPosAt) * speed * 1.35);
         p.lastPosAt = t;
-        const maxStep = MOVE_SPEED * (p.alive ? 1 : 1.6) * dt * 1.5 + 0.35;
         let dx = m.x - p.x, dz = m.z - p.z;
         const d = Math.hypot(dx, dz);
-        if (d > maxStep) {
-          dx *= maxStep / d;
-          dz *= maxStep / d;
+        const step = Math.min(d, p.moveBudget);
+        if (d > step) {
+          dx *= step / d;
+          dz *= step / d;
         }
+        p.moveBudget -= step;
         let nx = p.x + dx, nz = p.z + dz;
         if (p.alive) ({ x: nx, z: nz } = collide(nx, nz, PLAYER_RADIUS * 0.85));
-        if (d > maxStep + 2) p.tp++; // way off: make the client resync
+        if (d - step > 3) p.tp++; // way off (lag spike or cheating): snap the client back
         p.x = nx;
         p.z = nz;
         p.ry = m.ry;
@@ -320,7 +339,8 @@ export class Lobby {
       case "use": {
         if (!playing || !p.alive || p.hidden) return;
         const s = STATIONS[m.station];
-        if (!s || dist(p.x, p.z, s.x, s.z) > USE_RANGE + 0.4) return;
+        if (!s) return;
+        if (dist(p.x, p.z, s.x, s.z) > USE_RANGE + 0.6) return p.deny("Get closer to the station.");
         p.using = { station: s.id, start: t };
         p.moving = false;
         return;
@@ -343,7 +363,7 @@ export class Lobby {
         // goes if it's in reach, so standing beside two robots can't be gamed either way.
         const target = this.settings.assignedKills ? this.currentTarget(p) : null;
         const v = inReach.find((q) => q === target) ?? inReach.find((q) => q.id === m.target) ?? null;
-        if (!v) return;
+        if (!v) return p.deny("Nobody in reach.");
         this.kill(v, "ash");
         this.fx({ kind: "explode", x: v.x, z: v.z, c: this.deathColor(v) });
         p.killReadyAt = t + this.settings.killCooldown;
@@ -364,7 +384,8 @@ export class Lobby {
       case "vent": {
         if (!playing || p.role !== "impostor" || !p.alive || p.hidden) return;
         const v = VENTS[m.vent];
-        if (!v || dist(p.x, p.z, v.x, v.z) > 1.6) return;
+        if (!v) return;
+        if (dist(p.x, p.z, v.x, v.z) > 1.8) return p.deny("Get closer to the vent.");
         p.vent = v.id;
         p.using = null;
         p.teleport(v.x, v.z);
@@ -386,8 +407,9 @@ export class Lobby {
       }
       case "nest": {
         if (!playing || p.role !== "impostor" || !p.alive || p.hidden) return;
-        const el = ELEVATORS.find((e) => dist(p.x, p.z, e.x, e.z) < 2.2);
-        if (!el || !NESTS[m.nest]) return;
+        const el = ELEVATORS.find((e) => dist(p.x, p.z, e.x, e.z) < 2.6);
+        if (!NESTS[m.nest]) return;
+        if (!el) return p.deny("Get closer to the elevator.");
         p.elevator = el.id;
         p.nest = m.nest;
         p.using = null;
@@ -428,7 +450,8 @@ export class Lobby {
       case "report": {
         if (!playing || !p.alive || p.hidden) return;
         const b = this.bodies.find((b) => b.id === m.body);
-        if (!b || dist(p.x, p.z, b.x, b.z) > REPORT_RANGE + 0.4) return;
+        if (!b) return;
+        if (dist(p.x, p.z, b.x, b.z) > REPORT_RANGE + 0.6) return p.deny("Get closer to the wreckage.");
         this.startMeeting("body", p, b.c >= 0 ? b.c : null);
         return;
       }
@@ -443,7 +466,7 @@ export class Lobby {
       }
       case "button": {
         if (!playing || !p.alive || p.hidden || p.meetingsLeft <= 0) return;
-        if (dist(p.x, p.z, BUTTON.x, BUTTON.z) > BUTTON_RANGE + 0.6) return;
+        if (dist(p.x, p.z, BUTTON.x, BUTTON.z) > BUTTON_RANGE + 0.8) return p.deny("Get closer to the button.");
         p.meetingsLeft--;
         this.startMeeting("button", p, null);
         return;

@@ -82,6 +82,10 @@ export class Game {
   private robo = new RoboSpeech(() => this.voice.enableMic());
   private raycaster = new THREE.Raycaster();
   private overlay: Overlay = "none";
+  /** For the ?debug panel. */
+  get overlayName() {
+    return this.overlay;
+  }
   /** Analog stick from touch controls: x = strafe right, y = forward, each -1..1. */
   stick = { x: 0, y: 0 };
   /** Phones and tablets: no pointer lock, touch controls instead. */
@@ -205,6 +209,13 @@ export class Game {
     const s = (0.0024 * scale) / (this.inNest ? this.fovZoom() : 1);
     this.yaw -= dx * s;
     this.pitch += dy * s * (this.inNest || this.inVent ? -1 : 1);
+  }
+
+  /** Tell the server exactly where we are now — sent before any range-checked action. */
+  private syncPos() {
+    if (this.inVent || this.inNest || this.meView?.using) return;
+    this.lastSend = performance.now();
+    this.net.send({ t: "pos", x: this.x, z: this.z, ry: this.ry, moving: false });
   }
 
   // ---- entry points for touch controls (same actions as the keyboard) ----
@@ -337,6 +348,7 @@ export class Game {
       if (code === "KeyX" || code === "KeyE") this.net.send({ t: "nestExit" });
       return;
     }
+    if (code === "KeyE" || code === "KeyQ" || code === "KeyV") this.syncPos();
     if (code === "KeyE") {
       if (this.action) this.action.run();
       else if (this.role === "impostor") this.toast(`To snipe: walk to an ELEVATOR (middle of the east or west wall) and ${kb("press E", "tap USE")}.`);
@@ -699,6 +711,10 @@ export class Game {
       this.lastSend = t;
       this.sentMoving = moving;
       this.net.send({ t: "pos", x: this.x, z: this.z, ry: this.ry, moving });
+    } else if (canMove && !moving && me && t - this.lastSend > 300 && dist(me.x, me.z, this.x, this.z) > 0.25) {
+      // Standing still but the server's copy of us is elsewhere (a late or clipped update):
+      // keep nudging until it agrees, or range checks on the server fail mysteriously.
+      this.syncPos();
     }
 
     for (const r of this.robots.values()) r.update(dt, true);
@@ -1219,8 +1235,10 @@ export class Game {
               `<button data-c="${p.color}">${swatch(p.color)}${p.id === this.me ? "Back to my own" : colorName(p.color)}${p.alive ? "" : " ✝"}</button>`,
           )
           .join("")}</div>
-        <div class="small">${this.settings?.disguiseDuration ? `Lasts ${this.settings.disguiseDuration}s` : "Permanent until you swap again"}${kb(" · Esc to cancel", "")}</div></div>`,
+        <div class="small">${this.settings?.disguiseDuration ? `Lasts ${this.settings.disguiseDuration}s` : "Permanent until you swap again"}${kb(" · Esc to cancel", "")}</div>
+        <button class="pick-cancel">Cancel</button></div>`,
     );
+    $("overlay").querySelector(".pick-cancel")!.addEventListener("click", () => this.closeOverlay());
     $("overlay").querySelectorAll("button[data-c]").forEach((b) =>
       b.addEventListener("click", () => {
         this.net.send({ t: "disguise", color: Number((b as HTMLElement).dataset.c) });
@@ -1234,11 +1252,14 @@ export class Game {
       "nest",
       `<div class="pick panel"><h2>WHICH TOWER?</h2>
         <div class="grid">${NESTS.map((n) => `<button data-n="${n.id}">${n.name}</button>`).join("")}</div>
-        <div class="small">You vanish from the floor. Crew who spot you in the window can call a meeting.</div></div>`,
+        <div class="small">You vanish from the floor. Crew who spot you in the window can call a meeting.</div>
+        <button class="pick-cancel">Cancel</button></div>`,
     );
+    $("overlay").querySelector(".pick-cancel")!.addEventListener("click", () => this.closeOverlay());
     $("overlay").querySelectorAll("button[data-n]").forEach((b) =>
       b.addEventListener("click", () => {
         const n = NESTS[Number((b as HTMLElement).dataset.n)]!;
+        this.syncPos();
         this.net.send({ t: "nest", nest: n.id });
         // aim back at our floor
         this.yaw = Math.atan2(-n.x, -n.z);
