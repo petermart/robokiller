@@ -499,8 +499,10 @@ export class Game {
     if (m.settings.roboSpeech) this.robo.prepare();
     this.renderLobby();
     if (this.overlay === "meeting") this.renderMeeting();
-    // host may have changed (or just become known after a rejoin)
-    if (this.overlay === "over" && this.lastOver) this.showOver(this.lastOver, true);
+    // host may have changed (or just become known after a rejoin) — redraw only then, so a
+    // lobby update can't replace the "Back to lobby" button between finger-down and finger-up
+    const host = m.host === this.me;
+    if (this.overlay === "over" && this.lastOver && host !== this.overHost) this.showOver(this.lastOver, true);
   }
 
   private onSnap(s: Snapshot) {
@@ -1396,10 +1398,12 @@ export class Game {
   }
 
   private lastOver: Extract<ServerMsg, { t: "over" }> | null = null;
+  private overHost = false;
   private showOver(m: Extract<ServerMsg, { t: "over" }>, quiet = false) {
     this.lastOver = m;
     const imp = this.lobby?.players.find((p) => p.id === m.impostor);
     const host = this.lobby?.host === this.me;
+    this.overHost = host;
     const crewWon = m.winner === "crew";
     const iWon = (this.role === "impostor") === !crewWon;
     this.setOverlay(

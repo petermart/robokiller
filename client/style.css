@@ -1149,9 +1149,6 @@ html.browser-chrome body {
 html {
   overscroll-behavior-y: none;
 }
-#ui {
-  touch-action: pan-y;
-}
 #fs-hint {
   max-width: min(560px, 100%);
   background: var(--panel);
@@ -1181,4 +1178,24 @@ body.touch #mic-btn {
 /* "E — Report…" names a key phones don't have; the big USE button shows the same text */
 body.touch #prompt {
   display: none;
+}
+
+#bar-grip {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  padding: 10px 18px 14px;
+  background: var(--panel);
+  border: 2px solid var(--neon);
+  border-top: 0;
+  font-family: var(--pixel);
+  font-size: 9px;
+  color: var(--neon);
+  touch-action: pan-y;
+  animation: nudge 1.4s ease-in-out infinite;
+}
+@keyframes nudge {
+  50% { transform: translate(-50%, -3px); }
 }

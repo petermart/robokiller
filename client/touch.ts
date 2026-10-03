@@ -206,6 +206,97 @@ export class TouchControls {
   }
 }
 
+/**
+ * iPhone Safari is unreliable about turning a tap into a `click` (taps around scrolling,
+ * buttons redrawn mid-tap…). On touch screens, fire every ordinary button on finger-up
+ * instead, and swallow the late native click so nothing runs twice.
+ */
+export function installFastTap() {
+  let down: { el: HTMLElement; x: number; y: number; id: number } | null = null;
+  let synthAt = 0;
+  let synthEl: HTMLElement | null = null;
+  // The round game buttons act on pointerdown already; leave them (and text fields) alone.
+  const target = (e: Event) =>
+    (e.target as HTMLElement | null)?.closest?.<HTMLElement>("button:not(.tb), a[href]") ?? null;
+
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (e.pointerType !== "touch") return;
+      const el = target(e);
+      down = el ? { el, x: e.clientX, y: e.clientY, id: e.pointerId } : null;
+    },
+    true,
+  );
+  document.addEventListener(
+    "pointerup",
+    (e) => {
+      if (e.pointerType !== "touch" || !down || e.pointerId !== down.id) return;
+      const { el, x, y } = down;
+      down = null;
+      if (Math.hypot(e.clientX - x, e.clientY - y) > 14) return; // that was a swipe
+      if (!el.isConnected || (el as HTMLButtonElement).disabled) return;
+      synthAt = performance.now();
+      synthEl = el;
+      el.click(); // untrusted click → runs the button's normal handler
+    },
+    true,
+  );
+  document.addEventListener("pointercancel", () => (down = null), true);
+  // the browser's own click for the same tap, if it comes, is a duplicate
+  document.addEventListener(
+    "click",
+    (e) => {
+      if (!e.isTrusted || performance.now() - synthAt > 700) return;
+      const el = target(e);
+      if (el && (el === synthEl || !synthEl?.isConnected)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    },
+    true,
+  );
+}
+
+/**
+ * In a browser tab (not the home-screen app): keep the page from scrolling during play, so
+ * Safari's bars stay tucked away, and offer a grip to re-hide them if they come back.
+ */
+export function installBarGuard(isPlaying: () => boolean) {
+  // Places that legitimately scroll their own content.
+  const SCROLLERS = "#lobby-panel, .cards, .log, .meeting, #perf-banner, #bar-grip, input, textarea";
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!isPlaying()) return;
+      if ((e.target as Element | null)?.closest?.(SCROLLERS)) return;
+      if (e.cancelable) e.preventDefault();
+    },
+    { passive: false },
+  );
+
+  const grip = document.createElement("div");
+  grip.id = "bar-grip";
+  grip.textContent = "⇡ swipe up here to hide the browser bars";
+  grip.hidden = true;
+  document.getElementById("ui")!.appendChild(grip);
+  // Starting near the top gives the swipe room to scroll the page down, which is what
+  // makes the browser collapse its toolbars again.
+  grip.addEventListener("touchstart", () => {
+    if (window.scrollY > 40) window.scrollTo(0, 0);
+  });
+
+  let tallest = window.innerHeight;
+  const check = () => {
+    tallest = Math.max(tallest, window.innerHeight);
+    const barsShowing = window.innerHeight < tallest - 24;
+    grip.hidden = !(isPlaying() && barsShowing && matchMedia("(orientation: landscape)").matches);
+  };
+  window.addEventListener("resize", check);
+  window.visualViewport?.addEventListener("resize", check);
+  setInterval(check, 1000);
+}
+
 /** Running as an installed home-screen app (no browser bars at all)? */
 export function isInstalledApp() {
   return (

@@ -8,7 +8,15 @@ import { VoxelTitle } from "./render/title.ts";
 import { NO_INK } from "./render/toon.ts";
 import { World } from "./render/world.ts";
 import { PerfWatch } from "./perf.ts";
-import { TouchControls, goLandscape, isIOS, isInstalledApp, isTouchDevice } from "./touch.ts";
+import {
+  TouchControls,
+  goLandscape,
+  installBarGuard,
+  installFastTap,
+  isIOS,
+  isInstalledApp,
+  isTouchDevice,
+} from "./touch.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -87,11 +95,13 @@ for (const [rel, href] of [
 const touch = isTouchDevice() ? new TouchControls(game, $("touch")) : null;
 if (touch) {
   document.body.classList.add("touch");
+  installFastTap();
   if (!isInstalledApp()) {
     // Browsers only tuck their toolbars away when the page scrolls, so in a browser tab the
     // page gets a little scroll room; one swipe up on the title screen hides the bars.
     document.documentElement.classList.add("browser-chrome");
     showFullscreenHint();
+    installBarGuard(() => game.active);
   }
   // Android: fullscreen + landscape on the first tap. iOS can't, so it gets the rotate prompt.
   window.addEventListener("pointerdown", goLandscape, { once: true });
