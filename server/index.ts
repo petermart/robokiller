@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import index from "../client/index.html";
 import { TICK_HZ } from "../shared/constants.ts";
 import type { ClientMsg } from "../shared/protocol.ts";
@@ -9,6 +10,13 @@ const DEV = process.env.NODE_ENV !== "production";
 // Kept on globalThis so `bun --hot` reloads don't wipe running lobbies during development.
 const g = globalThis as unknown as { __rkLobbies?: Map<string, Lobby>; __rkTick?: ReturnType<typeof setInterval> };
 const lobbies = (g.__rkLobbies ??= new Map<string, Lobby>());
+
+/** Home-screen app files (manifest + icons) — served as-is, outside the HTML bundle. */
+const PUBLIC = join(import.meta.dir, "../public");
+const asset = (name: string, type: string) => () =>
+  new Response(Bun.file(join(PUBLIC, name)), {
+    headers: { "Content-Type": type, "Cache-Control": "public, max-age=86400" },
+  });
 // After a hot reload, point surviving lobbies at the freshly loaded classes so edits apply.
 for (const l of lobbies.values()) {
   Object.setPrototypeOf(l, Lobby.prototype);
@@ -78,6 +86,10 @@ const server = Bun.serve<SocketData>({
     "/": index,
     "/api/ice": async () => Response.json(await iceServers()),
     "/health": () => Response.json({ ok: true, lobbies: lobbies.size }),
+    "/manifest.webmanifest": asset("manifest.webmanifest", "application/manifest+json"),
+    "/apple-touch-icon.png": asset("apple-touch-icon.png", "image/png"),
+    "/icon-192.png": asset("icon-192.png", "image/png"),
+    "/icon-512.png": asset("icon-512.png", "image/png"),
   },
   fetch(req, srv) {
     const url = new URL(req.url);

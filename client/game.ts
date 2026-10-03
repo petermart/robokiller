@@ -49,6 +49,9 @@ const colorCss = (c: number) => COLORS[c]?.css ?? "#fff";
 /** Coloured colour name, e.g. <span style="color:red">Red</span>. */
 const colorTag = (c: number) => `<span style="color:${colorCss(c)}">${colorName(c)}</span>`;
 const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`);
+/** Keyboard wording on desktop, on-screen button wording on phones. */
+const isTouchUI = matchMedia("(pointer: coarse)").matches;
+const kb = (desktop: string, touch: string) => (isTouchUI ? touch : desktop);
 const swatch = (c: number) => `<span class="swatch" style="background:${colorCss(c)}"></span>`;
 
 export class Game {
@@ -336,7 +339,7 @@ export class Game {
     }
     if (code === "KeyE") {
       if (this.action) this.action.run();
-      else if (this.role === "impostor") this.toast("To snipe: walk to an ELEVATOR (middle of the east or west wall) and press E.");
+      else if (this.role === "impostor") this.toast(`To snipe: walk to an ELEVATOR (middle of the east or west wall) and ${kb("press E", "tap USE")}.`);
     }
     if (this.role !== "impostor") return;
     if (code === "KeyQ") this.tryKill();
@@ -945,9 +948,9 @@ export class Game {
     if (me && me.nest >= 0) {
       hint = `${NESTS[me.nest]!.name.toUpperCase()} — ${
         me.snipeCd > 0 ? `RELOADING ${Math.ceil(me.snipeCd)}s` : "ROUND CHAMBERED"
-      }<br><small>Click shoot · Right-drag / wheel zoom · X return to elevator</small>`;
+      }<br><small>${kb("Click shoot · Right-drag / wheel zoom · X return to elevator", "FIRE to shoot · ZOOM to magnify · EXIT back to the elevator")}</small>`;
     } else if (me && me.vent >= 0) {
-      hint = `IN THE VENTS<br><small>A / D crawl to next vent · V climb out</small>`;
+      hint = `IN THE VENTS<br><small>${kb("A / D crawl to next vent · V climb out", "◀ ▶ crawl to the next vent · CLIMB OUT")}</small>`;
     } else if (this.phase === "playing" && me && !me.alive) {
       hint = "YOU ARE OFFLINE — drift around as a ghost. The living can't hear you.";
     } else if (this.playing && this.alive && this.snap && this.snap.sniper >= 0 && this.role !== "impostor") {
@@ -1116,9 +1119,9 @@ export class Game {
       const r = this.robo;
       vr.innerHTML =
         r.engine === "web"
-          ? `<div class="small">ROBO SPEECH ON — hold <b>T</b>, speak, release. Everyone hears a robot voice in your current colour.</div>`
+          ? `<div class="small">ROBO SPEECH ON — ${kb("hold <b>T</b>", "hold <b>TALK</b>")}, speak, release. Everyone hears a robot voice in your current colour.</div>`
           : r.local.status === "ready"
-            ? `<div class="small">ROBO SPEECH ON (on-device model) — hold <b>T</b>, speak, release.</div>`
+            ? `<div class="small">ROBO SPEECH ON (on-device model) — ${kb("hold <b>T</b>", "hold <b>TALK</b>")}, speak, release.</div>`
             : r.local.status === "error"
               ? `<div class="err">Voice model failed to load: ${esc(r.local.error)}</div>`
               : `<div class="small">ROBO SPEECH: this browser has no built-in speech engine, so a voice model is
@@ -1126,7 +1129,7 @@ export class Game {
                  <div class="model-bar"><div style="width:${Math.round(r.local.progress * 100)}%"></div></div>`;
     } else if (l.settings.proximityVoice) {
       vr.innerHTML = this.voice.micReady
-        ? `<div class="small">MIC ${this.voice.muted ? "MUTED" : "LIVE"} — T toggles. Voices fade with distance and walls.</div>`
+        ? `<div class="small">MIC ${this.voice.muted ? "MUTED" : "LIVE"} — ${kb("T", "the MIC button")} toggles. Voices fade with distance and walls.</div>`
         : `<button id="enable-mic">Enable microphone</button>`;
       document.getElementById("enable-mic")?.addEventListener("click", () => void this.toggleMic());
     } else vr.innerHTML = `<div class="small">Voice chat is off.</div>`;
@@ -1185,8 +1188,8 @@ export class Game {
                 this.settings?.assignedKills
                   ? `<p class="impostor">ASSIGNED KILLS: destroy the crew in your secret order. One wrong kill and you lose.</p>`
                   : ""
-              }<p>Q explode a robot · F steal a colour · V crawl vents</p>
-               <p>E at an elevator: snipe from a distant tower</p>
+              }<p>${kb("Q explode a robot · F steal a colour · V crawl vents", "EXPLODE a robot · DISGUISE as any colour · VENT to crawl")}</p>
+               <p>${kb("E at an elevator", "USE at an elevator")}: snipe from a distant tower</p>
                <p>Fake your needs at stations. Don't get voted out.</p>`
             : `<p>Keep your bars topped up at stations. Find the rogue AI.</p>
                <p>Report wreckage · press the boardroom button · click a sniper you spot in a window</p>`
@@ -1214,7 +1217,7 @@ export class Game {
               `<button data-c="${p.color}">${swatch(p.color)}${p.id === this.me ? "Back to my own" : colorName(p.color)}${p.alive ? "" : " ✝"}</button>`,
           )
           .join("")}</div>
-        <div class="small">${this.settings?.disguiseDuration ? `Lasts ${this.settings.disguiseDuration}s` : "Permanent until you swap again"} · Esc to cancel</div></div>`,
+        <div class="small">${this.settings?.disguiseDuration ? `Lasts ${this.settings.disguiseDuration}s` : "Permanent until you swap again"}${kb(" · Esc to cancel", "")}</div></div>`,
     );
     $("overlay").querySelectorAll("button[data-c]").forEach((b) =>
       b.addEventListener("click", () => {
@@ -1339,7 +1342,7 @@ export class Game {
         ? `you voted ${this.myVote === "skip" ? "skip" : "✔"}`
         : m.discussionLeft > 0
           ? "voting opens soon"
-          : "click a robot to vote";
+          : kb("click a robot to vote", "tap a robot to vote");
     $<HTMLButtonElement>("m-skip").disabled = !!this.myVote || !this.alive || m.discussionLeft > 0;
     // talking rings from raw voice level
     if (this.settings?.proximityVoice && !this.settings.roboSpeech) {

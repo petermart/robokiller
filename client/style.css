@@ -982,9 +982,12 @@ body.touch .keys {
 body.touch.in-game #corner {
   top: max(8px, env(safe-area-inset-top));
   bottom: auto;
-  right: auto;
-  left: 50%;
-  transform: translateX(-50%);
+  right: max(14px, env(safe-area-inset-right));
+}
+/* the role tag sits under the corner buttons on phones */
+body.touch #role-tag {
+  top: 44px;
+  right: max(14px, env(safe-area-inset-right));
 }
 body.touch #toasts {
   top: 52px;
@@ -1127,4 +1130,55 @@ body.touch #crosshair {
   height: 100%;
   background: #7dff6a;
   transition: width 0.2s linear;
+}
+
+/* ---------------------------------------------------------------- full screen on phones */
+/* In a browser tab (not the installed app), give the page scroll room so a swipe up makes
+   Safari / Chrome collapse their toolbars. Everything visible is position:fixed, so the
+   game doesn't move; the in-game touch layer (touch-action:none) stops accidental scrolls. */
+html.browser-chrome,
+html.browser-chrome body {
+  height: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+html.browser-chrome body {
+  min-height: calc(100vh + 160px);
+}
+/* …but never pull-to-refresh a game in progress */
+html {
+  overscroll-behavior-y: none;
+}
+#ui {
+  touch-action: pan-y;
+}
+#fs-hint {
+  max-width: min(560px, 100%);
+  background: var(--panel);
+  border: 2px solid var(--neon);
+  padding: 6px 10px;
+  font-size: 18px;
+  line-height: 1.2;
+  text-align: center;
+}
+#fs-hint button {
+  padding: 0 6px;
+  margin-left: 6px;
+  font-size: 14px;
+}
+@media (max-height: 500px) {
+  #fs-hint {
+    font-size: 15px;
+    padding: 4px 8px;
+  }
+}
+
+/* phones talk/mute with the round MIC / HOLD TALK button; the keyboard-labelled one is redundant */
+body.touch #mic-btn {
+  display: none;
+}
+
+/* "E — Report…" names a key phones don't have; the big USE button shows the same text */
+body.touch #prompt {
+  display: none;
 }

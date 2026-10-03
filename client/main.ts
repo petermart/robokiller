@@ -8,7 +8,7 @@ import { VoxelTitle } from "./render/title.ts";
 import { NO_INK } from "./render/toon.ts";
 import { World } from "./render/world.ts";
 import { PerfWatch } from "./perf.ts";
-import { TouchControls, goLandscape, isTouchDevice } from "./touch.ts";
+import { TouchControls, goLandscape, isIOS, isInstalledApp, isTouchDevice } from "./touch.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -72,13 +72,50 @@ net.onStatus = (up) => $("net-status").classList.toggle("down", !up);
 
 // ------------------------------------------------------------------ phones
 
+// Home-screen app support. Added from script so Bun's HTML bundler leaves these URLs alone.
+for (const [rel, href] of [
+  ["manifest", "/manifest.webmanifest"],
+  ["apple-touch-icon", "/apple-touch-icon.png"],
+  ["icon", "/icon-192.png"],
+]) {
+  const l = document.createElement("link");
+  l.rel = rel!;
+  l.href = href!;
+  document.head.appendChild(l);
+}
+
 const touch = isTouchDevice() ? new TouchControls(game, $("touch")) : null;
 if (touch) {
   document.body.classList.add("touch");
+  if (!isInstalledApp()) {
+    // Browsers only tuck their toolbars away when the page scrolls, so in a browser tab the
+    // page gets a little scroll room; one swipe up on the title screen hides the bars.
+    document.documentElement.classList.add("browser-chrome");
+    showFullscreenHint();
+  }
   // Android: fullscreen + landscape on the first tap. iOS can't, so it gets the rotate prompt.
   window.addEventListener("pointerdown", goLandscape, { once: true });
   // iOS only unlocks audio from touchend/click, not pointerdown
   window.addEventListener("touchend", () => { unlockAudio(); audio(); audioReady = true; }, { once: true });
+}
+
+function showFullscreenHint() {
+  try {
+    if (localStorage.getItem("rk.fsHint") === "0") return;
+  } catch {}
+  const el = $("fs-hint");
+  el.innerHTML = isIOS()
+    ? `<b>Full screen:</b> swipe up once to hide Safari's bars — or tap <b>Share ⬆︎ → Add to Home Screen</b>
+       and play from the icon, with no bars at all. <button aria-label="Dismiss">✕</button>`
+    : `<b>Full screen:</b> tap anywhere to go full screen — or use your browser menu's
+       <b>Install app / Add to Home screen</b>. <button aria-label="Dismiss">✕</button>`;
+  el.hidden = false;
+  el.querySelector("button")!.addEventListener("click", () => {
+    el.hidden = true;
+    try {
+      localStorage.setItem("rk.fsHint", "0");
+    } catch {}
+  });
 }
 
 let audioReady = false;

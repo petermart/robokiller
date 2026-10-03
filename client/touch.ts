@@ -206,6 +206,19 @@ export class TouchControls {
   }
 }
 
+/** Running as an installed home-screen app (no browser bars at all)? */
+export function isInstalledApp() {
+  return (
+    matchMedia("(display-mode: fullscreen)").matches ||
+    matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
+export function isIOS() {
+  return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
 /** Fullscreen + landscape lock where the browser allows it (Android); iOS ignores both. */
 export function goLandscape() {
   const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
