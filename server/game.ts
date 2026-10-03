@@ -17,16 +17,11 @@ import {
 } from "../shared/constants.ts";
 import {
   BUTTON,
-  ELEVATORS,
-  NESTS,
-  STATIONS,
-  VENTS,
-  blocked,
-  collide,
   dist,
-  roomAt,
+  generateMap,
   spawnPoint,
-  ventNeighbour,
+  type MapOptions,
+  type WorldMap,
 } from "../shared/world/index.ts";
 import type {
   BodyView,
@@ -146,6 +141,26 @@ export class Lobby {
   } | null = null;
   emptySince = 0;
   lastOver: Extract<ServerMsg, { t: "over" }> | null = null;
+  /** This lobby's floor, generated from the map settings + seed (clients do the same). */
+  mapSeed = Math.floor(Math.random() * 2 ** 31);
+  map: WorldMap = generateMap(this.mapOptions());
+
+  mapOptions(): MapOptions {
+    const s = this.settings;
+    return { size: s.mapSize, roomSize: s.mapRoomSize, rooms: s.mapRooms, props: s.mapProps, towers: s.mapTowers, seed: this.mapSeed };
+  }
+
+  /** Rebuild the map after a settings change or reroll, and put everyone somewhere safe. */
+  private remap() {
+    const next = generateMap(this.mapOptions());
+    if (next.key === this.map.key) return;
+    this.map = next;
+    let i = 0;
+    for (const p of this.players.values()) {
+      const sp = spawnPoint(i++, MAX_PLAYERS);
+      p.teleport(sp.x, sp.z);
+    }
+  }
   private seq = 0;
 
   constructor(readonly code: string) {}
@@ -168,6 +183,7 @@ export class Lobby {
           role: existing.role,
           impostorColor: existing.role === "impostor" ? existing.color : null,
           quiet: true,
+          color: existing.color,
         });
       }
       if (this.phase === "over" && this.lastOver) existing.send(this.lastOver);
@@ -253,11 +269,16 @@ export class Lobby {
     this.broadcast({ t: "fx", fx });
   }
 
+  /** In an anonymous-colour lobby everyone shows grey (-1) until colours are dealt. */
+  private get greyLobby() {
+    return this.phase === "lobby" && this.settings.anonColors;
+  }
+
   lobbyChanged() {
     const players: LobbyPlayer[] = [...this.players.values()].map((p) => ({
       id: p.id,
       name: p.name,
-      color: p.color,
+      color: this.greyLobby ? -1 : p.color,
       connected: p.connected,
       alive: p.alive,
       mic: p.mic && p.connected,
@@ -271,6 +292,7 @@ export class Lobby {
         phase: this.phase,
         players,
         settings: this.settings,
+        mapSeed: this.mapSeed,
       });
     }
   }
@@ -283,7 +305,8 @@ export class Lobby {
     switch (m.t) {
       case "settings": {
         if (p.id !== this.host || this.phase !== "lobby") return;
-        const next = { ...this.settings };
+        // defaults first, so settings added since this lobby was made (hot reload) are accepted
+        const next = { ...DEFAULT_SETTINGS, ...this.settings };
         for (const [k, v] of Object.entries(m.settings) as [keyof Settings, unknown][]) {
           if (!(k in next)) continue;
           if (typeof next[k] === "boolean") (next as any)[k] = Boolean(v);
@@ -294,11 +317,12 @@ export class Lobby {
         }
         if (next.needIntervalMax < next.needIntervalMin) next.needIntervalMax = next.needIntervalMin;
         this.settings = next;
+        this.remap();
         this.lobbyChanged();
         return;
       }
       case "pickColor": {
-        if (this.phase !== "lobby" || !COLORS[m.color]) return;
+        if (this.phase !== "lobby" || !COLORS[m.color] || this.settings.anonColors) return;
         if ([...this.players.values()].some((q) => q.color === m.color)) return;
         p.color = p.displayColor = m.color;
         this.lobbyChanged();
@@ -306,6 +330,13 @@ export class Lobby {
       }
       case "start":
         if (p.id === this.host && this.phase === "lobby") this.start();
+        return;
+      case "newMap":
+        // reroll the random parts of the layout (extra furniture) with the same settings
+        if (p.id !== this.host || this.phase !== "lobby") return;
+        this.mapSeed = Math.floor(Math.random() * 2 ** 31);
+        this.remap();
+        this.lobbyChanged();
         return;
       case "toLobby":
         if (p.id === this.host && this.phase === "over") this.toLobby();
@@ -328,7 +359,7 @@ export class Lobby {
         }
         p.moveBudget -= step;
         let nx = p.x + dx, nz = p.z + dz;
-        if (p.alive) ({ x: nx, z: nz } = collide(nx, nz, PLAYER_RADIUS * 0.85));
+        if (p.alive) ({ x: nx, z: nz } = this.map.collide(nx, nz, PLAYER_RADIUS * 0.85));
         if (d - step > 3) p.tp++; // way off (lag spike or cheating): snap the client back
         p.x = nx;
         p.z = nz;
@@ -338,7 +369,7 @@ export class Lobby {
       }
       case "use": {
         if (!playing || !p.alive || p.hidden) return;
-        const s = STATIONS[m.station];
+        const s = this.map.stations[m.station];
         if (!s) return;
         if (dist(p.x, p.z, s.x, s.z) > USE_RANGE + 0.6) return p.deny("Get closer to the station.");
         p.using = { station: s.id, start: t };
@@ -383,7 +414,7 @@ export class Lobby {
       }
       case "vent": {
         if (!playing || p.role !== "impostor" || !p.alive || p.hidden) return;
-        const v = VENTS[m.vent];
+        const v = this.map.vents[m.vent];
         if (!v) return;
         if (dist(p.x, p.z, v.x, v.z) > 1.8) return p.deny("Get closer to the vent.");
         p.vent = v.id;
@@ -394,8 +425,8 @@ export class Lobby {
       }
       case "ventMove": {
         if (p.vent < 0) return;
-        p.vent = ventNeighbour(p.vent, m.dir);
-        const v = VENTS[p.vent]!;
+        p.vent = this.map.ventNeighbour(p.vent, m.dir);
+        const v = this.map.vents[p.vent]!;
         p.teleport(v.x, v.z);
         return;
       }
@@ -407,8 +438,8 @@ export class Lobby {
       }
       case "nest": {
         if (!playing || p.role !== "impostor" || !p.alive || p.hidden) return;
-        const el = ELEVATORS.find((e) => dist(p.x, p.z, e.x, e.z) < 2.6);
-        if (!NESTS[m.nest]) return;
+        const el = this.map.elevators.find((e) => dist(p.x, p.z, e.x, e.z) < 2.6);
+        if (!this.map.nests[m.nest]) return;
         if (!el) return p.deny("Get closer to the elevator.");
         p.elevator = el.id;
         p.nest = m.nest;
@@ -419,7 +450,7 @@ export class Lobby {
       case "nestExit": {
         if (p.nest < 0) return;
         p.nest = -1;
-        const el = ELEVATORS[p.elevator]!;
+        const el = this.map.elevators[p.elevator]!;
         p.teleport(el.x + (el.x < 0 ? 1.2 : -1.2), el.z);
         this.fx({ kind: "elevator", x: el.x, z: el.z });
         return;
@@ -427,15 +458,15 @@ export class Lobby {
       case "shoot": {
         if (!playing || p.nest < 0 || !p.alive || t < p.snipeReadyAt) return;
         p.snipeReadyAt = t + this.settings.sniperCooldown;
-        const nest = NESTS[p.nest]!;
+        const nest = this.map.nests[p.nest]!;
         const v = m.target ? this.players.get(m.target) : undefined;
         const ok =
           v &&
           v !== p &&
           v.alive &&
           !v.hidden &&
-          !roomAt(v.x, v.z)?.safe &&
-          !blocked(nest.x, nest.z, v.x, v.z);
+          !this.map.roomAt(v.x, v.z)?.safe &&
+          !this.map.blocked(nest.x, nest.z, v.x, v.z);
         if (ok && v) {
           const target = this.settings.assignedKills ? this.currentTarget(p) : null;
           this.kill(v, "ash");
@@ -458,9 +489,9 @@ export class Lobby {
       case "reportSniper": {
         if (!playing || !p.alive || p.hidden) return;
         const sniper = [...this.players.values()].find((q) => q.nest === m.nest && q.alive);
-        const nest = NESTS[m.nest];
+        const nest = this.map.nests[m.nest];
         if (!sniper || !nest) return;
-        if (roomAt(p.x, p.z)?.safe || blocked(p.x, p.z, nest.x, nest.z)) return;
+        if (this.map.roomAt(p.x, p.z)?.safe || this.map.blocked(p.x, p.z, nest.x, nest.z)) return;
         this.startMeeting("sniper", p, null);
         return;
       }
@@ -528,6 +559,15 @@ export class Lobby {
 
     const t = now();
     const s = this.settings;
+    if (s.anonColors) {
+      // deal every robot a random, unique colour — nobody chose theirs
+      const deck = COLORS.map((_, i) => i);
+      for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j]!, deck[i]!];
+      }
+      ps.forEach((p, i) => (p.color = deck[i]!));
+    }
     const impostor = ps[Math.floor(Math.random() * ps.length)]!;
     this.startedWith = ps.length;
     this.bodies = [];
@@ -559,7 +599,7 @@ export class Lobby {
     impostor.killOrder = crew;
     this.setPhase("reveal", REVEAL_SECONDS);
     for (const p of ps) {
-      p.send({ t: "role", role: p.role, impostorColor: p.role === "impostor" ? p.color : null });
+      p.send({ t: "role", role: p.role, impostorColor: p.role === "impostor" ? p.color : null, color: p.color });
     }
     this.lobbyChanged();
   }
@@ -797,7 +837,7 @@ export class Lobby {
       }
 
       if (p.using) {
-        const st = STATIONS[p.using.station]!;
+        const st = this.map.stations[p.using.station]!;
         if (dist(p.x, p.z, st.x, st.z) > USE_RANGE + 0.8) p.using = null;
         else if (t - p.using.start >= s.taskDuration) {
           const i = NEEDS.indexOf(st.kind);
@@ -847,7 +887,7 @@ export class Lobby {
           x: q.x,
           z: q.z,
           ry: q.ry,
-          c: q.displayColor,
+          c: this.greyLobby ? -1 : q.displayColor,
           moving: q.moving,
           using: !!q.using,
           ghost: !open && !q.alive,
@@ -856,8 +896,8 @@ export class Lobby {
       const me: MeView = {
         role: viewer.role,
         alive: viewer.alive,
-        color: viewer.color,
-        displayColor: viewer.displayColor,
+        color: this.greyLobby ? -1 : viewer.color,
+        displayColor: this.greyLobby ? -1 : viewer.displayColor,
         needs: viewer.needs.map((n) => Math.round(n * 10) / 10),
         active: viewer.active,
         using: viewer.using

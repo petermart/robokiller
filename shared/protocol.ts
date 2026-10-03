@@ -9,6 +9,7 @@ export type ClientMsg =
   | { t: "pickColor"; color: number }
   | { t: "start" }
   | { t: "toLobby" }
+  | { t: "newMap" }
   | { t: "leave" }
   | { t: "mic"; on: boolean }
   | { t: "pos"; x: number; z: number; ry: number; moving: boolean }
@@ -138,9 +139,11 @@ export type ServerMsg =
       phase: Phase;
       players: LobbyPlayer[];
       settings: Settings;
+      /** With the map settings, fully determines the map (shared/world/generate.ts). */
+      mapSeed: number;
     }
   | Snapshot
-  | { t: "role"; role: Role; impostorColor: number | null; quiet?: boolean }
+  | { t: "role"; role: Role; impostorColor: number | null; quiet?: boolean; color: number }
   | { t: "fx"; fx: Fx }
   | {
       t: "ejected";

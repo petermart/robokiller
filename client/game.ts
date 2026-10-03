@@ -10,27 +10,16 @@ import {
   NEED_LABEL,
   PLAYER_RADIUS,
   REPORT_RANGE,
+  MAP_SETTING_LABEL,
   SETTING_LABEL,
+  type MapSettingKey,
   SETTING_LIMITS,
   USE_RANGE,
   type Phase,
   type Role,
   type Settings,
 } from "../shared/constants.ts";
-import {
-  BUTTON,
-  CEILING_H,
-  ELEVATORS,
-  FLOOR,
-  NESTS,
-  STATIONS,
-  VENTS,
-  blocked,
-  collide,
-  dist,
-  firstWallHit,
-  roomAt,
-} from "../shared/world/index.ts";
+import { BUTTON, CEILING_H, MAP_LIMITS, PROP_LEVELS, dist, generateMap, type WorldMap } from "../shared/world/index.ts";
 import type { Fx as FxMsg, ServerMsg, Snapshot } from "../shared/protocol.ts";
 import { RoboSpeech } from "./audio/robospeech.ts";
 import { RoboVoice } from "./audio/robovoice/index.ts";
@@ -43,13 +32,14 @@ import { Fx } from "./engine/fx/index.ts";
 import { makeAsh } from "./engine/meshes/ash.ts";
 import { Robot } from "./engine/meshes/robot.ts";
 import type { World } from "./engine/world/index.ts";
+import { mapSvg, toPercent, towerLabel } from "./frontend/mapview.ts";
 
 type LobbyMsg = Extract<ServerMsg, { t: "lobby" }>;
 type Overlay = "none" | "reveal" | "meeting" | "ejection" | "over" | "disguise" | "nest";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const colorName = (c: number) => COLORS[c]?.name ?? "?";
-const colorCss = (c: number) => COLORS[c]?.css ?? "#fff";
+const colorCss = (c: number) => COLORS[c]?.css ?? "#8a8c94"; // -1 = grey (anonymous)
 /** Coloured colour name, e.g. <span style="color:red">Red</span>. */
 const colorTag = (c: number) => `<span style="color:${colorCss(c)}">${colorName(c)}</span>`;
 const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`);
@@ -98,6 +88,10 @@ export class Game {
   readonly heard = new Map<string, number>();
   private raycaster = new THREE.Raycaster();
   private overlay: Overlay = "none";
+  /** This lobby's floor (the world holds it, rebuilt when the map settings change). */
+  private get map(): WorldMap {
+    return this.world.map;
+  }
   /** For the ?debug panel. */
   get overlayName() {
     return this.overlay;
@@ -302,7 +296,7 @@ export class Game {
       wrongOrder: !!(me?.target && this.killTarget() && this.killTarget()!.id !== me.target.id),
       disguiseCd: me?.disguiseCd ?? 0,
       snipeCd: me?.snipeCd ?? 0,
-      nearVent: near(VENTS, 1.4),
+      nearVent: near(this.map.vents, 1.4),
       zoom: this.zoom,
       robo: !!this.settings?.roboSpeech,
       voice: !!this.settings?.proximityVoice,
@@ -384,7 +378,7 @@ export class Game {
     if (code === "KeyQ") this.tryKill();
     if (code === "KeyF") this.openDisguise();
     if (code === "KeyV") {
-      const v = VENTS.find((v) => dist(this.x, this.z, v.x, v.z) < 1.4);
+      const v = this.map.vents.find((v) => dist(this.x, this.z, v.x, v.z) < 1.4);
       if (v) {
         this.net.send({ t: "vent", vent: v.id });
         sfx("vent");
@@ -482,6 +476,7 @@ export class Game {
         break;
       case "role":
         this.role = m.role;
+        this.myColor = m.color;
         if (!m.quiet) this.showReveal();
         break;
       case "fx":
@@ -533,6 +528,20 @@ export class Game {
       m.players.filter((p) => p.connected).map((p) => p.id),
     );
     this.voice.setSending(m.settings.proximityVoice && !m.settings.roboSpeech);
+    // same options + seed as the server → the same map; rebuild the level if it changed
+    const s = m.settings;
+    const next = generateMap({
+      size: s.mapSize,
+      roomSize: s.mapRoomSize,
+      rooms: s.mapRooms,
+      props: s.mapProps,
+      towers: s.mapTowers,
+      seed: m.mapSeed,
+    });
+    if (next.key !== this.map.key) {
+      this.world.setMap(next);
+      this.robots.forEach((r) => this.world.scene.add(r.root)); // robots live on the scene, not the level
+    }
     // Robo speech on and no browser speech engine: start the on-device model downloading
     // in the background now, so it's (usually) ready before anyone needs to talk.
     if (m.settings.roboSpeech) {
@@ -648,14 +657,14 @@ export class Game {
         sfx("boom", near(f.x, f.z));
         break;
       case "shot": {
-        const n = NESTS[f.nest]!;
+        const n = this.map.nests[f.nest]!;
         this.fx.tracer(new THREE.Vector3(n.x, n.y, n.z), new THREE.Vector3(f.x, 0.9, f.z));
         sfx("shot", Math.max(0.5, near(f.x, f.z)));
         break;
       }
       case "vent":
         this.world.popVent(f.vent);
-        sfx("vent", near(VENTS[f.vent]!.x, VENTS[f.vent]!.z));
+        sfx("vent", near(this.map.vents[f.vent]!.x, this.map.vents[f.vent]!.z));
         break;
       case "task":
         this.fx.sparkle(f.x, f.z, NEED_COLOR[f.need as keyof typeof NEED_COLOR] ?? "#fff");
@@ -714,10 +723,10 @@ export class Game {
       const ghost = !this.alive && this.phase !== "lobby" && this.phase !== "over";
       const sp = MOVE_SPEED * (ghost ? 1.4 : 1) * throttle * dt;
       let nx = this.x + (mx / len) * sp, nz = this.z + (mz / len) * sp;
-      if (!ghost) ({ x: nx, z: nz } = collide(nx, nz, PLAYER_RADIUS));
+      if (!ghost) ({ x: nx, z: nz } = this.map.collide(nx, nz, PLAYER_RADIUS));
       else {
-        nx = Math.max(FLOOR.x1, Math.min(FLOOR.x2, nx));
-        nz = Math.max(FLOOR.z1, Math.min(FLOOR.z2, nz));
+        nx = Math.max(this.map.floor.x1, Math.min(this.map.floor.x2, nx));
+        nz = Math.max(this.map.floor.z1, Math.min(this.map.floor.z2, nz));
       }
       this.x = nx;
       this.z = nz;
@@ -765,7 +774,7 @@ export class Game {
       cam.position.lerp(new THREE.Vector3(0, 3.0, 6.4), Math.min(1, dt * 3));
       cam.lookAt(0, 0.6, 0);
     } else if (me && me.nest >= 0) {
-      const n = NESTS[me.nest]!;
+      const n = this.map.nests[me.nest]!;
       this.pitch = Math.max(-0.5, Math.min(0.4, this.pitch));
       cam.fov = 50 / this.fovZoom();
       cam.position.set(n.x, n.y, n.z);
@@ -777,7 +786,7 @@ export class Game {
       cam.lookAt(cam.position.clone().add(d));
       this.scope = 1;
     } else if (me && me.vent >= 0) {
-      const v = VENTS[me.vent]!;
+      const v = this.map.vents[me.vent]!;
       this.pitch = Math.max(-0.3, Math.min(0.5, this.pitch));
       cam.fov = 100;
       cam.position.set(v.x, 0.35, v.z);
@@ -797,7 +806,7 @@ export class Game {
       const sh = 0.75, rx = -fz * sh, rz = fx * sh;
       const hx = -fx * Math.cos(this.pitch) * boom + rx, hz = -fz * Math.cos(this.pitch) * boom + rz;
       // pull the camera in rather than letting a wall eat the view
-      const hit = this.alive ? firstWallHit(tx, tz, tx + hx, tz + hz) : 1;
+      const hit = this.alive ? this.map.firstWallHit(tx, tz, tx + hx, tz + hz) : 1;
       const k = Math.max(0.12, hit - 0.08);
       const py = Math.min(CEILING_H - 0.2, ty + Math.sin(this.pitch) * boom * Math.max(k, 0.5));
       cam.position.set(tx + hx * k, py, tz + hz * k);
@@ -825,7 +834,7 @@ export class Game {
       };
       return;
     }
-    const st = STATIONS.find((s) => dist(this.x, this.z, s.x, s.z) < USE_RANGE);
+    const st = this.map.stations.find((s) => dist(this.x, this.z, s.x, s.z) < USE_RANGE);
     if (st) {
       const i = NEEDS.indexOf(st.kind);
       const needed = me.active[i];
@@ -846,12 +855,12 @@ export class Game {
       return;
     }
     if (this.role === "impostor") {
-      const el = ELEVATORS.find((e) => dist(this.x, this.z, e.x, e.z) < 2.2);
+      const el = this.map.elevators.find((e) => dist(this.x, this.z, e.x, e.z) < 2.2);
       if (el) {
         this.action = { label: "E — Take the elevator to a sniper nest", run: () => this.openNestPicker() };
         return;
       }
-      const v = VENTS.find((v) => dist(this.x, this.z, v.x, v.z) < 1.4);
+      const v = this.map.vents.find((v) => dist(this.x, this.z, v.x, v.z) < 1.4);
       if (v) this.action = { label: "V — Crawl into vent", run: () => this.onKey("KeyV") };
     }
   }
@@ -898,7 +907,7 @@ export class Game {
           if (v) {
             const d = dist(this.x, this.z, v.x, v.z);
             g = Math.pow(Math.max(0, 1 - d / s.voiceRange), 1.4);
-            if (g > 0 && blocked(this.x, this.z, v.x, v.z, 2.6)) g *= 0.35;
+            if (g > 0 && this.map.blocked(this.x, this.z, v.x, v.z, 2.6)) g *= 0.35;
             const dx = v.x - this.x, dz = v.z - this.z;
             const dl = Math.hypot(dx, dz) || 1;
             pan = ((dx / dl) * right.x + (dz / dl) * right.z) * 0.8;
@@ -979,7 +988,7 @@ export class Game {
     const prog = $("progress");
     if (me?.using) {
       prog.hidden = false;
-      const st = STATIONS[me.using.station]!;
+      const st = this.map.stations[me.using.station]!;
       $("progress-bar").style.strokeDashoffset = String(264 * (1 - me.using.progress));
       $("progress-bar").style.stroke = NEED_COLOR[st.kind];
       $("progress-label").textContent = `${Math.ceil((1 - me.using.progress) * (this.settings?.taskDuration ?? 5))}s`;
@@ -1000,8 +1009,8 @@ export class Game {
           true,
         ),
         this.abilityHtml("F", me.disguised ? `As ${colorName(me.displayColor)}` : "Disguise", me.disguiseCd, true),
-        this.abilityHtml("V", "Vent", 0, VENTS.some((v) => dist(this.x, this.z, v.x, v.z) < 1.4)),
-        ELEVATORS.some((e) => dist(this.x, this.z, e.x, e.z) < 2.2)
+        this.abilityHtml("V", "Vent", 0, this.map.vents.some((v) => dist(this.x, this.z, v.x, v.z) < 1.4)),
+        this.map.elevators.some((e) => dist(this.x, this.z, e.x, e.z) < 2.2)
           ? this.abilityHtml("E", "Snipe nest", me.snipeCd, true)
           : this.abilityHtml("E", "Snipe: go to elevator", 0, false),
       ].join("");
@@ -1012,11 +1021,11 @@ export class Game {
     // mode hints
     let hint = "";
     if (me && me.nest >= 0) {
-      hint = `${NESTS[me.nest]!.name.toUpperCase()} — ${
+      hint = `${this.map.nests[me.nest]!.name.toUpperCase()} — ${
         me.snipeCd > 0 ? `RELOADING ${Math.ceil(me.snipeCd)}s` : "ROUND CHAMBERED"
       }<br><small>${kb("Click shoot · Right-drag / wheel zoom · X return to elevator", "FIRE to shoot · ZOOM to magnify · EXIT back to the elevator")}</small>`;
     } else if (me && me.vent >= 0) {
-      hint = `IN THE VENTS<br><small>${kb("A / D crawl to next vent · V climb out", "◀ ▶ crawl to the next vent · CLIMB OUT")}</small>`;
+      hint = `IN THE this.map.vents<br><small>${kb("A / D crawl to next vent · V climb out", "◀ ▶ crawl to the next vent · CLIMB OUT")}</small>`;
     } else if (this.phase === "playing" && me && !me.alive) {
       hint = "YOU ARE OFFLINE — drift around as a ghost. The living can't hear you.";
     } else if (this.playing && this.alive && this.snap && this.snap.sniper >= 0 && this.role !== "impostor") {
@@ -1127,7 +1136,9 @@ export class Game {
     const mine = l.players.find((p) => p.id === this.me)?.color;
     const taken = new Set(l.players.map((p) => p.color));
     const picker = $("color-picker");
-    picker.innerHTML = COLORS.map(
+    if (l.settings.anonColors) {
+      picker.innerHTML = `<div class="small">ANONYMOUS COLOURS — everyone's grey until the game starts, then colours are dealt at random.</div>`;
+    } else picker.innerHTML = COLORS.map(
       (c, i) =>
         `<button data-c="${i}" title="${c.name}" style="background:${c.css}" class="${i === mine ? "mine" : ""}"
           ${taken.has(i) && i !== mine ? "disabled" : ""}></button>`,
@@ -1142,7 +1153,7 @@ export class Game {
     // settings — rebuild only when not focused, so typing isn't interrupted
     const box = $("settings");
     if (!box.contains(document.activeElement)) {
-      box.innerHTML = (Object.keys(SETTING_LABEL) as (keyof Settings)[])
+      box.innerHTML = (Object.keys(SETTING_LABEL) as (keyof typeof SETTING_LABEL)[])
         .map((k) => {
           const v = l.settings[k];
           const lim = SETTING_LIMITS[k];
@@ -1162,6 +1173,7 @@ export class Game {
       );
     }
     $("rules-owner").textContent = host ? "(you're host)" : "(host sets these)";
+    this.renderMapOptions(host);
 
     this.renderVoiceRow();
 
@@ -1255,12 +1267,18 @@ export class Game {
     this.setOverlay("none", "");
   }
 
+  private myColor = -1;
   private showReveal() {
     const imp = this.role === "impostor";
+    // with anonymous colours this is the first you learn of yours
+    const yours = COLORS[this.myColor]
+      ? `<p>${swatch(this.myColor)} You are <span style="color:${colorCss(this.myColor)}">${colorName(this.myColor).toUpperCase()}</span></p>`
+      : "";
     this.setOverlay(
       "reveal",
       `<div class="splash">
         <h1 class="${imp ? "impostor" : "crew"}">${imp ? "YOU ARE THE<br>MAL-ALIGNED AI" : "YOU ARE CREW"}</h1>
+        ${yours}
         ${
           imp
             ? `${
@@ -1309,17 +1327,28 @@ export class Game {
   }
 
   private openNestPicker() {
+    const el = this.map.elevators.reduce((a, b) =>
+      dist(this.x, this.z, a.x, a.z) < dist(this.x, this.z, b.x, b.z) ? a : b,
+    );
+    const { svg, layout } = mapSvg(this.map, { towers: true, you: { x: this.x, z: this.z }, elevator: el.id });
+    const buttons = layout.towers
+      .map(({ nest, x, z }) => {
+        const p = toPercent(layout, x, z);
+        return `<button class="tower-btn" data-n="${nest.id}" title="${nest.name}"
+          style="left:${p.left.toFixed(1)}%;top:${p.top.toFixed(1)}%">${towerLabel(nest)}</button>`;
+      })
+      .join("");
     this.setOverlay(
       "nest",
-      `<div class="pick panel"><h2>WHICH TOWER?</h2>
-        <div class="grid">${NESTS.map((n) => `<button data-n="${n.id}">${n.name}</button>`).join("")}</div>
-        <div class="small">You vanish from the floor. Crew who spot you in the window can call a meeting.</div>
+      `<div class="pick panel tower-pick"><h2>WHICH TOWER?</h2>
+        <div class="tower-map" style="aspect-ratio:${layout.vw} / ${layout.vh};width:min(100%, calc(var(--map-h) * ${(layout.vw / layout.vh).toFixed(4)}))">${svg}${buttons}</div>
+        <div class="small">You vanish from the floor. Crew who spot you in a window can call a meeting.</div>
         <button class="pick-cancel">Cancel</button></div>`,
     );
     $("overlay").querySelector(".pick-cancel")!.addEventListener("click", () => this.closeOverlay());
     $("overlay").querySelectorAll("button[data-n]").forEach((b) =>
       b.addEventListener("click", () => {
-        const n = NESTS[Number((b as HTMLElement).dataset.n)]!;
+        const n = this.map.nests[Number((b as HTMLElement).dataset.n)]!;
         this.syncPos();
         this.net.send({ t: "nest", nest: n.id });
         // aim back at our floor
@@ -1329,6 +1358,45 @@ export class Game {
         this.closeOverlay();
       }),
     );
+  }
+
+  /** The lobby's Map section: size, rooms, furniture, towers, reroll, and a live preview. */
+  private renderMapOptions(host: boolean) {
+    const l = this.lobby!;
+    const box = $("map-settings");
+    if (box.contains(document.activeElement)) return; // don't fight the host's typing
+    const limits: Record<MapSettingKey, readonly [number, number, number]> = {
+      mapSize: MAP_LIMITS.size,
+      mapRoomSize: MAP_LIMITS.roomSize,
+      mapRooms: MAP_LIMITS.rooms,
+      mapProps: MAP_LIMITS.props,
+      mapTowers: MAP_LIMITS.towers,
+    };
+    const dis = host ? "" : "disabled";
+    const inputs = (Object.keys(MAP_SETTING_LABEL) as MapSettingKey[])
+      .map((k) => {
+        const v = l.settings[k];
+        const [lo, hi, step] = limits[k];
+        const input =
+          k === "mapProps"
+            ? `<select data-k="${k}" ${dis}>${PROP_LEVELS.map((name, i) => `<option value="${i}" ${i === v ? "selected" : ""}>${name}</option>`).join("")}</select>`
+            : `<input type="number" data-k="${k}" value="${v}" min="${lo}" max="${hi}" step="${step}" ${dis}>`;
+        const fit = this.map.rooms.filter((r) => r.id !== "board").length;
+        const note = k === "mapRooms" && fit < v ? ` <span class="small fit-note">${fit} fit</span>` : "";
+        return `<label>${MAP_SETTING_LABEL[k]}${note}</label>${input}`;
+      })
+      .join("");
+    const { svg } = mapSvg(this.map, { towers: true });
+    box.innerHTML = `<div class="map-grid">${inputs}</div>
+      <div class="map-preview">${svg}</div>
+      ${host ? `<button id="new-map">🎲 New layout</button>` : ""}`;
+    box.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-k]").forEach((inp) =>
+      inp.addEventListener("change", () => {
+        this.net.send({ t: "settings", settings: { [inp.dataset.k!]: Number(inp.value) } });
+      }),
+    );
+    document.getElementById("new-map")?.addEventListener("click", () => this.net.send({ t: "newMap" }));
+    $("map-owner").textContent = host ? "(you're host)" : "(host sets these)";
   }
 
   private showMeeting() {

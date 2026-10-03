@@ -3,9 +3,9 @@
 // them); this file is the room's look.
 
 import type * as THREE from "three";
-import { CHARGING_BAY } from "../../../../shared/world/rooms/charging-bay.ts";
+import type { Room } from "../../../../shared/world/index.ts";
 import { buildTaskRoom } from "./task-room.ts";
 
-export function buildChargingBay(scene: THREE.Scene) {
-  buildTaskRoom(scene, CHARGING_BAY);
+export function buildChargingBay(scene: THREE.Object3D, room: Room) {
+  buildTaskRoom(scene, room);
 }

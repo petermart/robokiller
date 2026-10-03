@@ -1,40 +1,53 @@
-// The 3D world: lights and smog, the floor and ceiling, every prop and station from the
-// shared map, the rooms, our tower and the city around it, the sniper nests, and the storm.
-// Each piece lives in its own file; this one assembles them and runs their animation.
+// The 3D world. The sky, smog and global lights live on the scene; everything that depends
+// on the map — floor, furniture, rooms, our tower, the city, the sniper towers and the
+// storm — lives in one `level` group that setMap() throws away and rebuilds whenever the
+// lobby's map changes. Robots and effects are added to the scene by the game and survive.
 
 import * as THREE from "three";
 import type { NeedKind } from "../../../shared/constants.ts";
-import { CEILING_H, ELEVATORS, FLOOR, RECTS, STATIONS, VENTS } from "../../../shared/world/index.ts";
-import { glow, noInk, toon } from "../toon.ts";
-import { buildCity, buildOwnTower } from "./city.ts";
-import { SniperNests } from "./nests.ts";
+import { CEILING_H, DEFAULT_MAP, type WorldMap } from "../../../shared/world/index.ts";
 import { elevatorMesh } from "../meshes/elevator.ts";
 import { stationMesh, type StationVisual } from "../meshes/station.ts";
 import { ventMesh } from "../meshes/vent.ts";
+import { glow, noInk, toon } from "../toon.ts";
+import { buildCity, buildOwnTower } from "./city.ts";
+import { SniperNests } from "./nests.ts";
 import { propMesh } from "./props.ts";
 import { Boardroom } from "./rooms/boardroom.ts";
 import { buildChargingBay } from "./rooms/charging-bay.ts";
 import { buildGarage } from "./rooms/garage.ts";
 import { buildOilBar } from "./rooms/oil-bar.ts";
 import { buildServerRoom } from "./rooms/server-room.ts";
+import { buildTaskRoom } from "./rooms/task-room.ts";
 import { Weather } from "./weather.ts";
 
 const SMOG = 0x6a4630;
+
+/** Each main room's look; corner closets (and anything new) use the shared task-room shell. */
+const ROOM_LOOKS: Record<string, (scene: THREE.Object3D, room: WorldMap["rooms"][number]) => void> = {
+  server: buildServerRoom,
+  medbay: buildChargingBay,
+  garage: buildGarage,
+  bar: buildOilBar,
+};
 
 export type { StationVisual };
 
 export class World {
   scene = new THREE.Scene();
   hemi: THREE.HemisphereLight;
+  map: WorldMap = DEFAULT_MAP;
   stations: StationVisual[] = [];
   vents: THREE.Group[] = [];
   /** Things the camera/raycasts treat as solid. */
   solids: THREE.Object3D[] = [];
   /** Need kinds whose stations get a floating marker (the local player's active needs). */
   highlight = new Set<NeedKind>();
-  private nests: SniperNests;
-  private boardroom: Boardroom;
-  private weather: Weather;
+  private level = new THREE.Group();
+  private nests!: SniperNests;
+  private boardroom!: Boardroom;
+  private weather!: Weather;
+  private thunder: (delay: number, power: number) => void = () => {};
   private time = 0;
 
   constructor() {
@@ -49,37 +62,58 @@ export class World {
     moon.position.set(-30, 40, 20);
     s.add(moon);
 
-    this.buildFloor();
-    for (const r of RECTS) {
+    this.buildLevel(DEFAULT_MAP);
+  }
+
+  /** Swap in a different map (no-op if it's the same layout). */
+  setMap(map: WorldMap) {
+    if (map.key === this.map.key) return;
+    this.scene.remove(this.level);
+    this.level.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+    this.level = new THREE.Group();
+    this.stations = [];
+    this.vents = [];
+    this.solids = [];
+    this.buildLevel(map);
+  }
+
+  private buildLevel(map: WorldMap) {
+    this.map = map;
+    const L = this.level;
+    this.scene.add(L);
+
+    this.buildFloor(map);
+    for (const r of map.rects) {
       const m = propMesh(r);
       if (!m) continue;
-      s.add(m);
+      L.add(m);
       if (r.h >= 1.4 && r.kind !== "glass") this.solids.push(m);
     }
-    for (const st of STATIONS) {
+    for (const st of map.stations) {
       const v = stationMesh(st);
-      s.add(v.group);
+      L.add(v.group);
       this.solids.push(v.group);
       this.stations.push(v);
     }
-    for (const v of VENTS) {
+    for (const v of map.vents) {
       const g = ventMesh(v.x, v.z);
-      s.add(g);
+      L.add(g);
       this.vents.push(g);
     }
-    for (const e of ELEVATORS) s.add(elevatorMesh(e));
+    for (const e of map.elevators) L.add(elevatorMesh(e, map.floor));
 
-    buildServerRoom(s);
-    buildChargingBay(s);
-    buildGarage(s);
-    buildOilBar(s);
-    this.boardroom = new Boardroom(s);
+    for (const room of map.rooms) {
+      if (room.id === "board") continue;
+      (ROOM_LOOKS[room.id] ?? buildTaskRoom)(L, room);
+    }
+    this.boardroom = new Boardroom(L);
     this.solids.push(...this.boardroom.solids);
 
-    buildOwnTower(s);
-    buildCity(s);
-    this.nests = new SniperNests(s);
-    this.weather = new Weather(s);
+    buildOwnTower(L, map);
+    buildCity(L, map);
+    this.nests = new SniperNests(L, map.nests);
+    this.weather = new Weather(L, map.floor);
+    this.weather.onThunder = this.thunder;
   }
 
   /** Clickable spheres around each sniper window. */
@@ -88,11 +122,14 @@ export class World {
   }
 
   set onThunder(fn: (delay: number, power: number) => void) {
+    this.thunder = fn;
     this.weather.onThunder = fn;
   }
 
-  private buildFloor() {
-    const w = FLOOR.x2 - FLOOR.x1, d = FLOOR.z2 - FLOOR.z1;
+  private buildFloor(map: WorldMap) {
+    const f = map.floor;
+    const L = this.level;
+    const w = f.x2 - f.x1, d = f.z2 - f.z1;
     const c = document.createElement("canvas");
     c.width = c.height = 64;
     const g = c.getContext("2d")!;
@@ -108,29 +145,31 @@ export class World {
     const floorMat = new THREE.MeshToonMaterial({ color: 0xffffff, map: tex, gradientMap: toon(0).gradientMap });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), floorMat);
     floor.rotation.x = -Math.PI / 2;
-    this.scene.add(floor);
+    floor.position.set((f.x1 + f.x2) / 2, 0, (f.z1 + f.z2) / 2);
+    L.add(floor);
     this.solids.push(floor);
 
     const slab = new THREE.Mesh(new THREE.BoxGeometry(w + 1, 0.6, d + 1), toon(0x22242e));
     slab.position.y = -0.31;
-    this.scene.add(slab);
+    L.add(slab);
 
     const ceil = new THREE.Mesh(new THREE.BoxGeometry(w + 1, 0.5, d + 1), toon(0x1c1e28));
     ceil.position.y = CEILING_H + 0.25;
-    this.scene.add(ceil);
+    L.add(ceil);
     // strip lights in the ceiling
-    for (let x = FLOOR.x1 + 4; x < FLOOR.x2; x += 6) {
-      for (let z = FLOOR.z1 + 3; z < FLOOR.z2; z += 5) {
+    for (let x = f.x1 + 4; x < f.x2; x += 6) {
+      for (let z = f.z1 + 3; z < f.z2; z += 5) {
         const p = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.04, 0.3), glow(0xfff1d6));
         p.position.set(x, CEILING_H - 0.02, z);
-        this.scene.add(noInk(p));
+        L.add(noInk(p));
       }
     }
-    // dim warm fill for the open-plan areas
+    // dim warm fill for the open-plan areas (placed as fractions of the floor)
+    const sx = f.x2 / 20, sz = f.z2 / 14;
     for (const [x, z] of [[-16, -10], [16, -10], [-16, 10], [16, 10], [0, -11], [0, 11], [-16, 0], [16, 0]]) {
       const l = new THREE.PointLight(0xffd2a0, 6, 14, 1.4);
-      l.position.set(x!, 2.9, z!);
-      this.scene.add(l);
+      l.position.set(x! * sx, 2.9, z! * sz);
+      L.add(l);
     }
   }
 

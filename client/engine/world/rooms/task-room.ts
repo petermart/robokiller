@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { CEILING_H, type Room } from "../../../../shared/world/index.ts";
 import { glow, noInk, textTexture, toon } from "../../toon.ts";
 
-export function buildTaskRoom(scene: THREE.Scene, room: Room) {
+export function buildTaskRoom(scene: THREE.Object3D, room: Room) {
   const w = room.x2 - room.x1, d = room.z2 - room.z1;
   const cx = (room.x1 + room.x2) / 2, cz = (room.z1 + room.z2) / 2;
 

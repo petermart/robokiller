@@ -2,7 +2,7 @@
 // and the shell of our own tower above and below the playable floor.
 
 import * as THREE from "three";
-import { CEILING_H, FLOOR, NESTS } from "../../../shared/world/index.ts";
+import { CEILING_H, type WorldMap } from "../../../shared/world/index.ts";
 import { glow, noInk, textTexture, toon } from "../toon.ts";
 
 /** A random grid of lit/dark office windows (mostly warm, a few neon). */
@@ -56,9 +56,10 @@ export function towerMaterial(seed: number, lit: number, color: number, intensit
 }
 
 /** Our own skyscraper above and below the floor — what the title camera sees. */
-export function buildOwnTower(scene: THREE.Scene) {
+export function buildOwnTower(scene: THREE.Object3D, map: WorldMap) {
   const mat = towerMaterial(7, 0.14, 0x1a1c26, 0.55);
-  const w = FLOOR.x2 - FLOOR.x1 + 1.2, d = FLOOR.z2 - FLOOR.z1 + 1.2;
+  const f = map.floor;
+  const w = f.x2 - f.x1 + 1.2, d = f.z2 - f.z1 + 1.2;
   const above = new THREE.Mesh(towerGeometry(w, 60, d), mat);
   above.position.y = CEILING_H + 0.5 + 30;
   const below = new THREE.Mesh(towerGeometry(w, 160, d), mat);
@@ -66,16 +67,18 @@ export function buildOwnTower(scene: THREE.Scene) {
   scene.add(above, below);
 }
 
-/** ~90 towers on a ring 70–300 m out, keeping the sniper towers' sight lines clear. */
-export function buildCity(scene: THREE.Scene) {
+/** ~90 towers on a ring well clear of our floor, keeping the sniper towers' sight lines clear. */
+export function buildCity(scene: THREE.Object3D, map: WorldMap) {
+  const f = map.floor;
+  const inner = Math.max(70, Math.hypot(f.x2 - f.x1, f.z2 - f.z1) / 2 + 45);
   const mats = [1, 2, 3, 4].map((seed) => towerMaterial(seed, 0.2 + seed * 0.05, 0x161822, 0.8));
   let seed = 3;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   for (let i = 0; i < 90; i++) {
     const a = rnd() * Math.PI * 2;
-    const r = 70 + rnd() * 230;
+    const r = inner + rnd() * 230;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
-    if (NESTS.some((n) => Math.hypot(n.bx - x, n.bz - z) < 30)) continue;
+    if (map.nests.some((n) => Math.hypot(n.bx - x, n.bz - z) < 30)) continue;
     const w = 12 + rnd() * 18, d = 12 + rnd() * 18, h = 120 + rnd() * 260;
     const m = new THREE.Mesh(towerGeometry(w, h, d), mats[i % mats.length]!);
     m.position.set(x, -180 + h / 2, z);

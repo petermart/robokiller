@@ -106,6 +106,52 @@ export function propMesh(r: Rect): THREE.Object3D | null {
       add(new THREE.BoxGeometry(w, h, d), toon(0x9a7040), 0, h / 2);
       add(new THREE.BoxGeometry(w + 0.02, 0.1, d + 0.02), toon(0x6a4a28), 0, h * 0.5);
       break;
+    case "divider": {
+      // tall office wall panel: dark base, frosted glass band, lit top rail
+      const long = Math.max(w, d), alongX = w >= d;
+      const sz = (len: number, t: number) => (alongX ? [len, t] : [t, len]) as [number, number];
+      const [bw, bd] = sz(long, 0.16);
+      add(new THREE.BoxGeometry(bw, h * 0.62, bd), toon(0x3d4a5c), 0, (h * 0.62) / 2);
+      noInk(
+        add(
+          new THREE.BoxGeometry(bw, h * 0.34, bd * 0.6),
+          new THREE.MeshBasicMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.35, depthWrite: false }),
+          0,
+          h * 0.62 + (h * 0.34) / 2,
+        ),
+      );
+      const [rw, rd] = sz(long + 0.02, 0.2);
+      add(new THREE.BoxGeometry(rw, 0.06, rd), toon(0x1e2430), 0, h - 0.03);
+      noInk(add(new THREE.BoxGeometry(rw, 0.03, rd + 0.02), glow(0x4af0ff), 0, h * 0.62));
+      break;
+    }
+    case "shelf": {
+      // storage shelving: steel uprights, four shelves, stocked with coloured boxes
+      add(new THREE.BoxGeometry(w, 0.05, d), toon(0x5a5f6e), 0, h);
+      for (const ux of [-1, 1]) {
+        for (const uz of [-1, 1]) {
+          add(new THREE.BoxGeometry(0.06, h, 0.06), toon(0x2a2e3a), (ux * (w - 0.06)) / 2, h / 2, (uz * (d - 0.06)) / 2);
+        }
+      }
+      const boxes = [0xc0763a, 0x7a8b9c, 0xd9b45a, 0x6b4a8c, 0x3f7f6a];
+      for (let i = 0; i < 4; i++) {
+        const y = 0.15 + i * ((h - 0.2) / 4);
+        add(new THREE.BoxGeometry(w - 0.04, 0.04, d - 0.04), toon(0x4a4f5c), 0, y);
+        const n = 3;
+        for (let j = 0; j < n; j++) {
+          const t = (j + 0.5) / n - 0.5;
+          const bh = 0.22 + ((i * 7 + j * 3) % 4) * 0.05;
+          add(
+            new THREE.BoxGeometry(w > d ? (w / n) * 0.7 : d * 0.7, bh, w > d ? d * 0.7 : (d / n) * 0.7),
+            toon(boxes[(i + j) % boxes.length]!),
+            w > d ? t * w : 0,
+            y + 0.02 + bh / 2,
+            w > d ? 0 : t * d,
+          );
+        }
+      }
+      break;
+    }
     case "station":
     case "table":
     case "elevator":

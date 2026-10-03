@@ -23,7 +23,33 @@ export type PropStyle =
   | "table"
   | "elevator"
   | "station"
-  | "crate";
+  | "crate"
+  | "shelf"
+  | "divider";
+
+/** The playable floor's outline, in metres. */
+export interface Floor {
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
+}
+
+/** The host's map choices. Same options + seed ⇒ the same map on server and every client. */
+export interface MapOptions {
+  /** Play-area scale, percent (100 = the original 40 × 28 m floor). */
+  size: number;
+  /** Task-room scale, percent (100 = original room sizes). */
+  roomSize: number;
+  /** Task rooms: the 4 main rooms, then extra rooms wherever they fit. */
+  rooms: number;
+  /** Furniture: 0 sparse, 1 normal, 2 busy, 3 packed, 4 maze, 5 labyrinth. */
+  props: number;
+  /** Sniper towers around the building. */
+  towers: number;
+  /** Randomises the extra furniture at busy/packed densities. */
+  seed: number;
+}
 
 export interface Rect {
   x1: number;

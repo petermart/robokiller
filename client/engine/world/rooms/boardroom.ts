@@ -11,7 +11,7 @@ export class Boardroom {
   private button: THREE.Mesh;
   private sign: THREE.Mesh;
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Object3D) {
     const l = new THREE.PointLight(BOARDROOM.light, 10, 12, 1.3);
     l.position.set(0, 2.9, 0);
     scene.add(l);

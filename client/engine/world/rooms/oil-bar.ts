@@ -3,9 +3,9 @@
 // them); this file is the room's look.
 
 import type * as THREE from "three";
-import { OIL_BAR } from "../../../../shared/world/rooms/oil-bar.ts";
+import type { Room } from "../../../../shared/world/index.ts";
 import { buildTaskRoom } from "./task-room.ts";
 
-export function buildOilBar(scene: THREE.Scene) {
-  buildTaskRoom(scene, OIL_BAR);
+export function buildOilBar(scene: THREE.Object3D, room: Room) {
+  buildTaskRoom(scene, room);
 }

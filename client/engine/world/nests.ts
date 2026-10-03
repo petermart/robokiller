@@ -1,9 +1,9 @@
-// The three distant towers a sniper can shoot from. Each has a lit open window; while a
+// The distant towers a sniper can shoot from (how many is a map setting). Each has a lit open window; while a
 // sniper is in it, a dark silhouette and a blinking red scope glint give them away to
 // anyone who looks closely.
 
 import * as THREE from "three";
-import { NESTS } from "../../../shared/world/index.ts";
+import type { Nest } from "../../../shared/world/index.ts";
 import { Robot } from "../meshes/robot.ts";
 import { glow, noInk } from "../toon.ts";
 import { towerGeometry, towerMaterial } from "./city.ts";
@@ -14,8 +14,8 @@ export class SniperNests {
   private snipers: Robot[] = [];
   private glints: THREE.Mesh[] = [];
 
-  constructor(scene: THREE.Scene) {
-    for (const n of NESTS) {
+  constructor(scene: THREE.Object3D, nests: Nest[]) {
+    for (const n of nests) {
       const h = n.bh + 180;
       const tower = new THREE.Mesh(towerGeometry(n.bw, h, n.bd), towerMaterial(20 + n.id, 0.18, 0x14161e, 0.7));
       tower.position.set(n.bx, -180 + h / 2, n.bz);

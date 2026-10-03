@@ -1,11 +1,11 @@
 import * as THREE from "three";
-import { CEILING_H, FLOOR } from "../../../shared/world/index.ts";
+import { CEILING_H, type Floor } from "../../../shared/world/index.ts";
 import { glow, noInk, textTexture, toon } from "../toon.ts";
 
 /** A service elevator door in the east or west wall, with its lit ELEVATOR sign. */
-export function elevatorMesh(e: { x: number; z: number }): THREE.Group {
+export function elevatorMesh(e: { x: number; z: number }, floor: Floor): THREE.Group {
   const g = new THREE.Group();
-  g.position.set(e.x < 0 ? FLOOR.x1 + 0.12 : FLOOR.x2 - 0.12, 0, e.z);
+  g.position.set(e.x < 0 ? floor.x1 + 0.12 : floor.x2 - 0.12, 0, e.z);
   g.rotation.y = e.x < 0 ? Math.PI / 2 : -Math.PI / 2;
   const frame = new THREE.Mesh(new THREE.BoxGeometry(3.0, CEILING_H, 0.1), toon(0x2a2c36));
   frame.position.y = CEILING_H / 2;

@@ -67,6 +67,8 @@ export interface Settings {
   anonymousDeaths: boolean;
   /** Disguises survive meetings, and the voting roster shows disguised identities. */
   disguiseCarry: boolean;
+  /** Everyone is grey in the lobby (no picking); colours are dealt at random at the start. */
+  anonColors: boolean;
   discussionTime: number;
   votingTime: number;
   emergencyMeetings: number;
@@ -75,7 +77,21 @@ export interface Settings {
   /** Admin toggle: mic → text → robot TTS, instead of raw voice. */
   roboSpeech: boolean;
   voiceRange: number;
+  /** Map: play-area scale, percent. */
+  mapSize: number;
+  /** Map: task-room scale, percent. */
+  mapRoomSize: number;
+  /** Map: task rooms (4 main + extra rooms wherever they fit, up to 16). */
+  mapRooms: number;
+  /** Map: furniture density 0 sparse … 5 labyrinth. */
+  mapProps: number;
+  /** Map: sniper towers around the building. */
+  mapTowers: number;
 }
+
+/** The settings that shape the map (shown in their own "Map" section, above Rules). */
+export const MAP_SETTING_KEYS = ["mapSize", "mapRoomSize", "mapRooms", "mapProps", "mapTowers"] as const;
+export type MapSettingKey = (typeof MAP_SETTING_KEYS)[number];
 
 export const DEFAULT_SETTINGS: Settings = {
   taskDuration: 5,
@@ -89,6 +105,7 @@ export const DEFAULT_SETTINGS: Settings = {
   assignedKills: false,
   anonymousDeaths: false,
   disguiseCarry: false,
+  anonColors: false,
   discussionTime: 30,
   votingTime: 45,
   emergencyMeetings: 1,
@@ -96,6 +113,11 @@ export const DEFAULT_SETTINGS: Settings = {
   proximityVoice: true,
   roboSpeech: false,
   voiceRange: 11,
+  mapSize: 100,
+  mapRoomSize: 100,
+  mapRooms: 4,
+  mapProps: 1,
+  mapTowers: 3,
 };
 
 /** Clamp ranges for host-editable numeric settings — the server enforces these. */
@@ -112,9 +134,14 @@ export const SETTING_LIMITS: Partial<Record<keyof Settings, [number, number, num
   votingTime: [10, 300, 5],
   emergencyMeetings: [0, 9, 1],
   voiceRange: [4, 30, 1],
+  mapSize: [100, 200, 10],
+  mapRoomSize: [70, 150, 10],
+  mapRooms: [4, 16, 1],
+  mapProps: [0, 5, 1],
+  mapTowers: [1, 8, 1],
 };
 
-export const SETTING_LABEL: Record<keyof Settings, string> = {
+export const SETTING_LABEL: Record<Exclude<keyof Settings, MapSettingKey>, string> = {
   taskDuration: "Task duration (s)",
   needIntervalMin: "Need interval — low (s)",
   needIntervalMax: "Need interval — high (s)",
@@ -126,6 +153,7 @@ export const SETTING_LABEL: Record<keyof Settings, string> = {
   assignedKills: "Assigned kills (secret kill order)",
   anonymousDeaths: "Anonymous deaths (grey ashes)",
   disguiseCarry: "Disguise into next round",
+  anonColors: "Anonymous colours (random at start)",
   discussionTime: "Discussion time (s)",
   votingTime: "Voting time (s)",
   emergencyMeetings: "Emergency meetings each",
@@ -133,6 +161,14 @@ export const SETTING_LABEL: Record<keyof Settings, string> = {
   proximityVoice: "Proximity voice chat",
   roboSpeech: "Robo speech (anonymised TTS)",
   voiceRange: "Voice range (m)",
+};
+
+export const MAP_SETTING_LABEL: Record<MapSettingKey, string> = {
+  mapSize: "Play area size (%)",
+  mapRoomSize: "Room size (%)",
+  mapRooms: "Task rooms",
+  mapProps: "Furniture",
+  mapTowers: "Sniper towers",
 };
 
 export type Phase = "lobby" | "reveal" | "playing" | "meeting" | "ejection" | "over";

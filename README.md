@@ -58,18 +58,48 @@ landscape on the first tap). Multitouch twin-stick:
 - **Win.** Crew wins by ejecting the AI. The AI wins when crew alive ≤ 1 (or 0 in a
   2-player test game).
 
-## Admin twists (lobby settings, all off by default)
+## Map options (host, above Rules)
+
+Each lobby generates its own floor from these — the server and every client run the same
+generator with the same settings + seed, so only those numbers go over the network. The
+defaults reproduce the original hand-made map exactly.
+
+- **Play area size** 100–200% — the floor grows; the four main rooms move outward but keep
+  their real size, so the extra space goes to more rooms and furniture.
+- **Room size** 70–150% — scales every task room (main and extra; the boardroom stays put).
+  Rooms grow outward from the boardroom, walls and doors move with them, and stations and
+  furniture keep their real size. Bigger rooms mean fewer extra rooms fit.
+- **Task rooms** 4–16 — extra rooms are small windowless rooms (sniper-safe), each with two
+  stations of one need and a vent, dropped one by one into the most open spot left (corners
+  first). The lobby says how many fit if you ask for more than the floor holds (about 10 at
+  100%, all 16 from 130%).
+- **Furniture** Sparse / Normal / Busy / Packed / Maze / Labyrinth — from Busy up, extra cover
+  is scattered with an increasing share of tall pieces: 2.7 m office dividers (and L-shapes),
+  2.6 m storage shelving, two-high crate stacks and pillars. Walkways, doors, vents and
+  elevators always stay clear. `bun scripts/sightlines.ts` measures how many long views remain
+  clear at each level.
+- **Sniper towers** 1–8 — north, east, south, then west and the diagonals. The AI picks one on
+  a top-down map with every tower placed in its real direction.
+- **🎲 New layout** rerolls the extra furniture.
+
+The map preview in the lobby updates live. `bun scripts/test-maps.ts` flood-fills dozens of
+option combinations to prove every station, vent and elevator stays reachable.
+
+## Admin twists (lobby rules, all off by default)
 
 - **Assigned kills** — the AI gets a secret, random kill order and sees *"your target, Name
   Colour"*. The server decides who explodes: if the target is in reach it always dies, even
   with another robot closer, so crowding can't be exploited. Killing anyone else — explosion
   or sniper — ends the game for the crew. Targets that die another way are skipped.
 - **Anonymous deaths** — explosions and ashes are grey and reports just say "wreckage".
+- **Anonymous colours** — everyone is grey in the lobby and can't pick a colour; at the start
+  each robot is dealt a random, unique colour (the role reveal tells you yours).
 - **Disguise into next round** — disguises survive meetings, and the voting roster, chat,
   "called by" and ejections all use the identity each robot is *showing*. Red dressed as Pink
   who kills Pink appears in the vote as Pink, with Red gone. Off: disguises drop at meetings.
 
-`bun run test` runs headless checks of these rules against the real lobby code.
+`bun run test` runs headless checks of these rules, movement, and map reachability against the
+real lobby code.
 
 ## Voice
 
@@ -110,10 +140,13 @@ shared/                     read by both server and browser
     rooms/                  one file per room: walls/doors, stations, furniture
     open-plan.ts            glass perimeter, elevators, cubicles, columns, lounges
     places.ts               vents, elevators, sniper towers, spawn ring
-    assemble.ts  geometry.ts  build.ts  types.ts  index.ts
+    generate.ts             builds a WorldMap from the map options (+ seed)
+    worldmap.ts             collision, line of sight, room lookup for one map
+    build.ts  types.ts  index.ts
 server/                     Bun.serve + one authoritative 20 Hz loop per lobby
 client/
   frontend/                 index.html  main.ts  style.css  net.ts  perf.ts  touch.ts
+                            mapview.ts (top-down map: lobby preview + tower picker)
   game.ts                   input, camera, HUD, meetings, voice mix
   audio/
     robovoice/              worker.ts (eSpeak)  effects.ts (robot chain)  index.ts (playback)

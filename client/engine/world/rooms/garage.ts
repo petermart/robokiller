@@ -3,9 +3,9 @@
 // them); this file is the room's look.
 
 import type * as THREE from "three";
-import { GARAGE } from "../../../../shared/world/rooms/garage.ts";
+import type { Room } from "../../../../shared/world/index.ts";
 import { buildTaskRoom } from "./task-room.ts";
 
-export function buildGarage(scene: THREE.Scene) {
-  buildTaskRoom(scene, GARAGE);
+export function buildGarage(scene: THREE.Object3D, room: Room) {
+  buildTaskRoom(scene, room);
 }

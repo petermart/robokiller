@@ -173,6 +173,8 @@ export class TouchControls {
     const s = this.game.touchState();
     const out: Btn[] = [];
     if (!s.active) return out;
+    // Pickers fill the screen with their own buttons — keep the corner clear.
+    if (s.overlay === "nest" || s.overlay === "disguise") return out;
 
     const talk: Btn | null = s.robo
       ? s.roboReady
@@ -187,7 +189,7 @@ export class TouchControls {
       if (talk) out.push(talk);
       return out;
     }
-    // Overlays (meeting, pickers, results) bring their own buttons; only talking stays.
+    // Other overlays (meeting, results) bring their own buttons; only talking stays.
     const overlayUp = s.overlay !== "none" && s.overlay !== "reveal";
     if (overlayUp || s.phase !== "playing" || !s.alive) {
       if (talk && (s.phase !== "meeting" || s.alive)) out.push(talk);

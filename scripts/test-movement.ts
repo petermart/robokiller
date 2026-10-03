@@ -3,7 +3,6 @@
 
 import { Lobby, type Player } from "../server/game.ts";
 import { MOVE_SPEED } from "../shared/constants.ts";
-import { ELEVATORS } from "../shared/world/index.ts";
 import type { ServerMsg } from "../shared/protocol.ts";
 
 let failures = 0;
@@ -33,7 +32,7 @@ if (phone.role !== "impostor") {
 
 // Walk from the east corridor toward the east elevator at full speed for 2.4 s,
 // sending every 50 ms — but delivered six at a time every 300 ms.
-const el = ELEVATORS[1]!;
+const el = lobby.map.elevators[1]!;
 phone.teleport(8, 0);
 let cx = 8;
 const msgs: number[] = [];

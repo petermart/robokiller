@@ -6,7 +6,7 @@
     "dev": "bun --hot server/index.ts",
     "start": "NODE_ENV=production bun server/index.ts",
     "typecheck": "tsc --noEmit -p .",
-    "test": "bun scripts/test-twists.ts && bun scripts/test-movement.ts"
+    "test": "bun scripts/test-twists.ts && bun scripts/test-movement.ts && bun scripts/test-maps.ts"
   },
   "dependencies": {
     "mespeak": "2.0.2",

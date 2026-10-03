@@ -2,7 +2,7 @@
 // a screen flash and thunder (the sound arrives later the further away the strike is).
 
 import * as THREE from "three";
-import { FLOOR } from "../../../shared/world/index.ts";
+import type { Floor } from "../../../shared/world/index.ts";
 import { noInk } from "../toon.ts";
 
 export class Weather {
@@ -12,8 +12,15 @@ export class Weather {
   private nextStrike = 4;
   private strike: { t: number; pulses: number[] } | null = null;
   onThunder: (delay: number, power: number) => void = () => {};
+  /** Rain covers a square this wide around the tower (wider for bigger floors). */
+  private get spread() {
+    return Math.max(140, (this.floor.x2 - this.floor.x1) * 3);
+  }
 
-  constructor(private scene: THREE.Scene) {
+  constructor(
+    private scene: THREE.Object3D,
+    private floor: Floor,
+  ) {
     const N = 2600;
     this.rainPos = new Float32Array(N * 6);
     for (let i = 0; i < N; i++) this.respawnDrop(i, Math.random() * 60 - 30);
@@ -28,9 +35,9 @@ export class Weather {
   private respawnDrop(i: number, y: number) {
     let x = 0, z = 0;
     do {
-      x = (Math.random() - 0.5) * 140;
-      z = (Math.random() - 0.5) * 140;
-    } while (x > FLOOR.x1 - 1 && x < FLOOR.x2 + 1 && z > FLOOR.z1 - 1 && z < FLOOR.z2 + 1);
+      x = (Math.random() - 0.5) * this.spread;
+      z = (Math.random() - 0.5) * this.spread;
+    } while (x > this.floor.x1 - 1 && x < this.floor.x2 + 1 && z > this.floor.z1 - 1 && z < this.floor.z2 + 1);
     const p = this.rainPos;
     p[i * 6] = x;
     p[i * 6 + 1] = y;

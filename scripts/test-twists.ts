@@ -125,5 +125,31 @@ function setup(settings: Record<string, unknown>) {
   check("roster shows everyone as themselves", m.cards.every((c) => c.alive) && m.cards.length === 4);
 }
 
+// ---- 6. anonymous colours: grey lobby, no picking, random unique colours at the start --------
+{
+  const lobby = new Lobby("ANON");
+  const boxes = new Map<string, ServerMsg[]>();
+  const ps: Player[] = [];
+  for (const name of ["Ivy", "Juno", "Kip", "Lux", "Moss"]) {
+    const box: ServerMsg[] = [];
+    const p = lobby.join({ send: (s: string) => box.push(JSON.parse(s)), close() {} } as any, name, `t-${name}`) as Player;
+    boxes.set(p.id, box);
+    ps.push(p);
+  }
+  lobby.handle(ps[0]!, { t: "settings", settings: { anonColors: true } as any });
+  const lobbyMsg = [...boxes.get(ps[1]!.id)!].reverse().find((m) => m.t === "lobby") as Extract<ServerMsg, { t: "lobby" }>;
+  check("anonymous lobby shows everyone grey", lobbyMsg.players.every((p) => p.color === -1));
+  const before = ps[2]!.color;
+  lobby.handle(ps[2]!, { t: "pickColor", color: 9 });
+  check("colour picking is locked", ps[2]!.color === before);
+  lobby.handle(ps[0]!, { t: "start" });
+  const colors = ps.map((p) => p.color);
+  check("colours dealt at the start are valid and unique", new Set(colors).size === ps.length && colors.every((c) => c >= 0 && c < 10), colors.join(","));
+  const role = boxes.get(ps[3]!.id)!.find((m) => m.t === "role") as Extract<ServerMsg, { t: "role" }>;
+  check("each player is told their colour", role.color === ps[3]!.color);
+  const inGame = [...boxes.get(ps[1]!.id)!].reverse().find((m) => m.t === "lobby") as Extract<ServerMsg, { t: "lobby" }>;
+  check("real colours are shown once the game is on", inGame.players.every((p) => p.color >= 0));
+}
+
 console.log(failures ? `\n${failures} check(s) failed` : "\nall checks passed");
 process.exit(failures ? 1 : 0);
