@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Robokiller</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+
+    <div id="ui">
+      <section id="title-screen">
+        <p class="tagline">vote to eliminate the mal-aligned super AI before it terminates you!</p>
+        <div class="menu panel">
+          <label>Robot name<input id="name" maxlength="16" placeholder="BEEPBOOP" autocomplete="off" /></label>
+          <button id="create" class="big">Create lobby</button>
+          <div class="or">— or join with a code —</div>
+          <div class="join-row">
+            <input id="code" maxlength="4" placeholder="CODE" autocomplete="off" />
+            <button id="join">Join</button>
+          </div>
+          <div id="title-error" class="err"></div>
+        </div>
+        <div class="keys">
+          <span><b>WASD</b> move</span><span><b>Mouse</b> look</span><span><b>E</b> use / report</span>
+          <span><b>T</b> mic</span><span><b>M</b> music</span>
+        </div>
+      </section>
+
+      <section id="lobby-panel" class="panel" hidden>
+        <div class="lobby-head">
+          <div>
+            <div class="small">LOBBY CODE</div>
+            <div id="lobby-code" class="code"></div>
+          </div>
+          <button id="copy-link">Copy invite</button>
+        </div>
+        <ul id="lobby-players"></ul>
+        <div class="small">YOUR COLOUR</div>
+        <div id="color-picker"></div>
+        <details id="rules" open>
+          <summary>Rules <span id="rules-owner" class="small"></span></summary>
+          <div id="settings"></div>
+        </details>
+        <div id="voice-row"></div>
+        <button id="start" class="big">Start game</button>
+        <div id="lobby-wait" class="small">Waiting for the host to start…</div>
+        <div class="small dim">Tab hides this panel · walk around while you wait</div>
+        <button id="leave-lobby">Leave lobby</button>
+      </section>
+
+      <section id="hud" hidden>
+        <div id="role-tag"></div>
+        <div id="needs"></div>
+        <div id="abilities"></div>
+        <div id="prompt"></div>
+        <div id="crosshair"></div>
+        <div id="progress" hidden>
+          <svg viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="42" class="track" />
+            <circle cx="50" cy="50" r="42" class="bar" id="progress-bar" />
+          </svg>
+          <span id="progress-label"></span>
+        </div>
+        <div id="mode-hint"></div>
+        <div id="subtitle"></div>
+      </section>
+
+      <section id="overlay" hidden></section>
+      <div id="bubbles"></div>
+      <div id="dictation" hidden><span class="dict-label"></span><span class="dict-text"></span></div>
+      <div id="toasts"></div>
+      <div id="lock-hint" hidden>Click to look around</div>
+
+      <div id="corner">
+        <span id="talk-indicator" hidden></span>
+        <button id="mic-btn" title="Microphone (T)">MIC</button>
+        <button id="music-btn" title="Music (M)">♪</button>
+        <button id="leave-btn" title="Leave this lobby" hidden>LEAVE</button>
+        <span id="net-status" title="connection"></span>
+      </div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "robokiller",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["--hot", "server/index.ts"],
+      "port": 3077,
+      "env": { "PORT": "3077" }
+    }
+  ]
+}
