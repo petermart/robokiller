@@ -27,7 +27,7 @@ import {
   roomAt,
   spawnPoint,
   ventNeighbour,
-} from "../shared/map.ts";
+} from "../shared/world/index.ts";
 import type {
   BodyView,
   ClientMsg,

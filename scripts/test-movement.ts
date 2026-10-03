@@ -3,7 +3,7 @@
 
 import { Lobby, type Player } from "../server/game.ts";
 import { MOVE_SPEED } from "../shared/constants.ts";
-import { ELEVATORS } from "../shared/map.ts";
+import { ELEVATORS } from "../shared/world/index.ts";
 import type { ServerMsg } from "../shared/protocol.ts";
 
 let failures = 0;

@@ -1,4 +1,4 @@
-import type { ClientMsg, ServerMsg } from "../shared/protocol.ts";
+import type { ClientMsg, ServerMsg } from "../../shared/protocol.ts";
 
 /** One WebSocket to the game server, reconnecting into the same lobby seat on drop. */
 export class Net {

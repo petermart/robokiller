@@ -1,12 +1,14 @@
 import * as THREE from "three";
-import { Voice } from "./audio/voice.ts";
-import { musicOn, setMusic, thunder, unlockAudio, audio } from "./audio/sound.ts";
-import { Game } from "./game.ts";
+import { Voice } from "../audio/voice.ts";
+import { thunder } from "../audio/background/ambience.ts";
+import { musicOn, setMusic } from "../audio/background/music.ts";
+import { audio, unlockAudio } from "../audio/context.ts";
+import { Game } from "../game.ts";
 import { Net, sessionToken } from "./net.ts";
-import { Post } from "./render/post.ts";
-import { VoxelTitle } from "./render/title.ts";
-import { NO_INK } from "./render/toon.ts";
-import { World } from "./render/world.ts";
+import { Post } from "../engine/post.ts";
+import { VoxelTitle } from "../engine/title.ts";
+import { NO_INK } from "../engine/toon.ts";
+import { World } from "../engine/world/index.ts";
 import { PerfWatch } from "./perf.ts";
 import {
   TouchControls,

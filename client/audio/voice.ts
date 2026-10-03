@@ -2,8 +2,8 @@
 // Every remote voice runs through its own gain + stereo pan, which the game loop drives
 // from distance, walls, and who is alive.
 
-import type { Net } from "../net.ts";
-import { audio } from "./sound.ts";
+import type { Net } from "../frontend/net.ts";
+import { audio } from "./context.ts";
 
 interface Peer {
   pc: RTCPeerConnection;

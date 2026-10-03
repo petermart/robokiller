@@ -101,7 +101,31 @@ honoured and WebSockets work out of the box. Share `https://<app>/?code=ABCD` wi
 ## Layout
 
 ```
-shared/   constants, the 2D map (collision, line-of-sight), wire protocol
-server/   Bun.serve + per-lobby authoritative game loop (20 Hz)
-client/   Three.js renderer (toon + ink post), robots, world, audio, UI
+shared/                     read by both server and browser
+  constants.ts  protocol.ts
+  world/                    the floor as 2D data (collision, line of sight, ranges)
+    rooms/                  one file per room: walls/doors, stations, furniture
+    open-plan.ts            glass perimeter, elevators, cubicles, columns, lounges
+    places.ts               vents, elevators, sniper towers, spawn ring
+    assemble.ts  geometry.ts  build.ts  types.ts  index.ts
+server/                     Bun.serve + one authoritative 20 Hz loop per lobby
+client/
+  frontend/                 index.html  main.ts  style.css  net.ts  perf.ts  touch.ts
+  game.ts                   input, camera, HUD, meetings, voice mix
+  audio/
+    background/             music.ts (8-bit loop)  ambience.ts (rain, thunder)
+    sfx/                    sfx.ts
+    context.ts  voice.ts  robospeech.ts  localstt.ts
+  engine/                   Three.js rendering
+    shaders/                ink.ts (the Borderlands outline pass)
+    fx/                     explode.ts  tracer.ts  sparkle.ts  (+ index.ts manager)
+    meshes/                 robot.ts  ash.ts
+    world/                  index.ts  city.ts  nests.ts  props.ts  weather.ts
+      rooms/                one file per room's look (+ task-room.ts shared shell)
+    post.ts  toon.ts  title.ts
+scripts/                    tests, icon generator, map snapshot
+public/                     home-screen manifest + icons
 ```
+
+`bun scripts/map-snapshot.ts` prints the whole server-side map as JSON — diff it before and
+after editing `shared/world/` to be sure geometry changed only where you meant it to.

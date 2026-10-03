@@ -2,8 +2,8 @@
 // on the right half (a quick tap there = a desktop click), and buttons that change with
 // what you can do right now. Multitouch, so you can walk and look at the same time.
 
-import type { Game } from "./game.ts";
-import { unlockAudio } from "./audio/sound.ts";
+import type { Game } from "../game.ts";
+import { unlockAudio } from "../audio/context.ts";
 
 const STICK_RADIUS = 56; // px of thumb travel for full speed
 const DEADZONE = 0.12;
@@ -196,7 +196,7 @@ export class TouchControls {
 
     if (s.inNest) {
       out.push({ id: "fire", label: "FIRE", run: () => this.game.fire(), enabled: s.snipeCd <= 0, cd: s.snipeCd, big: true, hot: true });
-      out.push({ id: "zoom", label: `ZOOM ${s.zoom}×`, run: () => this.game.cycleZoom(), enabled: true });
+      out.push({ id: "zoom", label: `ZOOM ${+s.zoom.toFixed(2)}×`, run: () => this.game.cycleZoom(), enabled: true });
       out.push({ id: "exit", label: "EXIT", key: "KeyX", enabled: true });
     } else if (s.inVent) {
       out.push({ id: "vexit", label: "CLIMB OUT", key: "KeyV", enabled: true, big: true });

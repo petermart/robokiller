@@ -2,7 +2,7 @@
 // that just can't keep up — and tells the player how to fix it in *their* browser.
 
 import type * as THREE from "three";
-import type { Post } from "./render/post.ts";
+import type { Post } from "../engine/post.ts";
 
 type BrowserId = "chrome" | "edge" | "firefox" | "safari" | "other";
 

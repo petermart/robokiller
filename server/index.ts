@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import index from "../client/index.html";
+import index from "../client/frontend/index.html";
 import { TICK_HZ } from "../shared/constants.ts";
 import type { ClientMsg } from "../shared/protocol.ts";
 import { Lobby, Player, type SocketData } from "./game.ts";

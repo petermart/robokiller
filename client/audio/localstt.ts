@@ -6,7 +6,7 @@
 // Hugging Face hub, both only when this fallback is actually needed. The browser caches
 // the model, so it's a one-time download.
 
-import { audio } from "./sound.ts";
+import { audio } from "./context.ts";
 
 const LIB = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.0";
 const MODEL = "onnx-community/moonshine-tiny-ONNX";

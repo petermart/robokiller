@@ -30,15 +30,18 @@ import {
   dist,
   firstWallHit,
   roomAt,
-} from "../shared/map.ts";
+} from "../shared/world/index.ts";
 import type { Fx as FxMsg, ServerMsg, Snapshot } from "../shared/protocol.ts";
 import { RoboSpeech } from "./audio/robospeech.ts";
-import { musicOn, setMusic, sfx, unlockAudio } from "./audio/sound.ts";
+import { musicOn, setMusic } from "./audio/background/music.ts";
+import { unlockAudio } from "./audio/context.ts";
+import { sfx } from "./audio/sfx/sfx.ts";
 import type { Voice } from "./audio/voice.ts";
-import type { Net } from "./net.ts";
-import { Fx } from "./render/fx.ts";
-import { Robot, makeAsh } from "./render/robot.ts";
-import type { World } from "./render/world.ts";
+import type { Net } from "./frontend/net.ts";
+import { Fx } from "./engine/fx/index.ts";
+import { makeAsh } from "./engine/meshes/ash.ts";
+import { Robot } from "./engine/meshes/robot.ts";
+import type { World } from "./engine/world/index.ts";
 
 type LobbyMsg = Extract<ServerMsg, { t: "lobby" }>;
 type Overlay = "none" | "reveal" | "meeting" | "ejection" | "over" | "disguise" | "nest";
