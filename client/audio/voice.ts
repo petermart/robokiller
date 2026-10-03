@@ -4,6 +4,7 @@
 
 import type { Net } from "../frontend/net.ts";
 import { audio } from "./context.ts";
+import { measure, type Mouth } from "./levels.ts";
 
 interface Peer {
   pc: RTCPeerConnection;
@@ -238,6 +239,16 @@ export class Voice {
     let s = 0;
     for (const v of buf) s += ((v - 128) / 128) ** 2;
     return Math.sqrt(s / buf.length);
+  }
+
+  /** Mouth shape for a peer's raw voice (gate it on whether you can hear them). */
+  peerMouth(id: string): Mouth {
+    return measure(this.peers.get(id)?.level);
+  }
+
+  /** Mouth shape for your own mic (silent while muted or not sending). */
+  micMouth(): Mouth {
+    return this.sendingMic ? measure(this.micLevel) : { level: 0, bright: 0.5 };
   }
 
   /** Loudness of a peer's raw voice (before proximity), for talking indicators. */

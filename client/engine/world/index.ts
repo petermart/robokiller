@@ -8,7 +8,10 @@ import { CEILING_H, ELEVATORS, FLOOR, RECTS, STATIONS, VENTS } from "../../../sh
 import { glow, noInk, toon } from "../toon.ts";
 import { buildCity, buildOwnTower } from "./city.ts";
 import { SniperNests } from "./nests.ts";
-import { elevatorMesh, propMesh, stationMesh, ventMesh, type StationVisual } from "./props.ts";
+import { elevatorMesh } from "../meshes/elevator.ts";
+import { stationMesh, type StationVisual } from "../meshes/station.ts";
+import { ventMesh } from "../meshes/vent.ts";
+import { propMesh } from "./props.ts";
 import { Boardroom } from "./rooms/boardroom.ts";
 import { buildChargingBay } from "./rooms/charging-bay.ts";
 import { buildGarage } from "./rooms/garage.ts";

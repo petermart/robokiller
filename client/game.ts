@@ -33,6 +33,7 @@ import {
 } from "../shared/world/index.ts";
 import type { Fx as FxMsg, ServerMsg, Snapshot } from "../shared/protocol.ts";
 import { RoboSpeech } from "./audio/robospeech.ts";
+import { RoboVoice } from "./audio/robovoice/index.ts";
 import { musicOn, setMusic } from "./audio/background/music.ts";
 import { unlockAudio } from "./audio/context.ts";
 import { sfx } from "./audio/sfx/sfx.ts";
@@ -55,6 +56,14 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`
 /** Keyboard wording on desktop, on-screen button wording on phones. */
 const isTouchUI = matchMedia("(pointer: coarse)").matches;
 const kb = (desktop: string, touch: string) => (isTouchUI ? touch : desktop);
+/** Lines for the lobby's voice preview. */
+const PREVIEW_LINES = [
+  "Take me to your leader.",
+  "I am not the mal-aligned AI.",
+  "Beep boop. My oil is low.",
+  "Exterminate the traitor.",
+  "Red is acting sus.",
+];
 const swatch = (c: number) => `<span class="swatch" style="background:${colorCss(c)}"></span>`;
 
 export class Game {
@@ -83,6 +92,10 @@ export class Game {
   private fx: Fx;
   // The mic stream comes from the voice module; in robo mode it never sends raw audio.
   private robo = new RoboSpeech(() => this.voice.enableMic());
+  /** Speaks robo-speech lines in a robot voice, mixed by proximity like voice chat. */
+  readonly robovoice = new RoboVoice();
+  /** Last proximity gain per robot (0–1): what this player can actually hear of them. */
+  readonly heard = new Map<string, number>();
   private raycaster = new THREE.Raycaster();
   private overlay: Overlay = "none";
   /** For the ?debug panel. */
@@ -115,6 +128,7 @@ export class Game {
 
     this.robo.onText = (text) => {
       this.net.send({ t: "robo", text });
+      void this.robovoice.say(this.me, text, this.self.color, 0.5);
       this.say(this.me, text, this.self.color);
       if (this.phase === "meeting") {
         this.chatLog.push({ from: this.me, text, robo: this.self.color });
@@ -124,6 +138,7 @@ export class Game {
     };
     this.robo.onPartial = (text) => this.showDictation("listening", text);
     // model download progress / engine switch: only the bits that show it
+    this.robovoice.onStatus = () => this.renderVoiceRow();
     this.robo.onStatus = () => {
       this.renderCorner();
       this.renderVoiceRow();
@@ -520,7 +535,10 @@ export class Game {
     this.voice.setSending(m.settings.proximityVoice && !m.settings.roboSpeech);
     // Robo speech on and no browser speech engine: start the on-device model downloading
     // in the background now, so it's (usually) ready before anyone needs to talk.
-    if (m.settings.roboSpeech) this.robo.prepare();
+    if (m.settings.roboSpeech) {
+      this.robo.prepare();
+      this.robovoice.load();
+    }
     this.renderLobby();
     if (this.overlay === "meeting") this.renderMeeting();
     // host may have changed (or just become known after a rejoin) — redraw only then, so a
@@ -653,14 +671,8 @@ export class Game {
   }
 
   private onRobo(m: Extract<ServerMsg, { t: "robo" }>) {
-    const range = this.settings?.voiceRange ?? 11;
-    let vol = 1;
-    if (!m.global) {
-      const d = dist(this.x, this.z, m.x, m.z);
-      vol = Math.max(0, 1 - d / range);
-      if (blocked(this.x, this.z, m.x, m.z, 2.6)) vol *= 0.4;
-    }
-    this.robo.speak(m.text, m.c, vol);
+    // Volume and pan follow the speaker live via updateVoiceMix → robovoice.setMix.
+    void this.robovoice.say(m.from, m.text, m.c, this.heard.get(m.from) ?? 0);
     this.say(m.from, m.text, m.c);
     if (this.phase === "meeting") {
       this.chatLog.push({ from: m.from, text: m.text, robo: m.c });
@@ -729,6 +741,7 @@ export class Game {
       this.syncPos();
     }
 
+    this.updateMouths();
     for (const r of this.robots.values()) r.update(dt, true);
     this.fx.update(dt);
 
@@ -843,10 +856,28 @@ export class Game {
     }
   }
 
+  /**
+   * Mouths follow what *you* can hear: robot-voice lines, or raw voice chat gated by the
+   * proximity mix — so a robot out of earshot never visibly gives itself away by talking.
+   */
+  private updateMouths() {
+    const robo = !!this.settings?.roboSpeech;
+    const mouthOf = (id: string) => {
+      if ((this.heard.get(id) ?? 0) < 0.03) return null; // out of earshot: mouth stays shut
+      return robo ? this.robovoice.mouth(id) : this.voice.peerMouth(id);
+    };
+    for (const [id, r] of this.robots) {
+      const m = mouthOf(id);
+      r.setTalk(m?.level ?? 0, m?.bright ?? 0.5);
+    }
+    const mine = robo ? this.robovoice.mouth(this.me) : this.voice.micMouth();
+    this.self.setTalk(mine.level, mine.bright);
+  }
+
   private updateVoiceMix() {
     const s = this.settings;
     if (!s || !this.lobby) return;
-    const off = !s.proximityVoice || s.roboSpeech;
+    const voiceOn = s.proximityVoice && !s.roboSpeech;
     const meAlive = this.alive;
     const visible = new Map(this.snap?.players.map((p) => [p.id, p]) ?? []);
     const right = new THREE.Vector3();
@@ -855,7 +886,7 @@ export class Game {
     for (const p of this.lobby.players) {
       if (p.id === this.me) continue;
       let g = 0, pan = 0;
-      if (!off) {
+      {
         // Only the role reveal and meetings are "everyone in one room"; the lobby and the
         // end screen use proximity just like live play.
         const freeRoam = this.phase === "lobby" || this.phase === "over";
@@ -874,8 +905,13 @@ export class Game {
           }
         }
       }
-      this.voice.setMix(p.id, g, pan);
+      this.heard.set(p.id, g);
+      this.voice.setMix(p.id, voiceOn ? g : 0, pan);
+      this.robovoice.setMix(p.id, s.roboSpeech ? g : 0, pan);
     }
+    // your own robot voice: quiet, centred
+    this.heard.set(this.me, 1);
+    this.robovoice.setMix(this.me, s.roboSpeech ? 0.5 : 0, 0);
   }
 
   // ================================================================== HUD
@@ -1157,6 +1193,19 @@ export class Game {
               : `<div class="small">ROBO SPEECH: this browser has no built-in speech engine, so a voice model is
                  downloading in the background (one time, ~28 MB). You can play now; talking unlocks at 100%.</div>
                  <div class="model-bar"><div style="width:${Math.round(r.local.progress * 100)}%"></div></div>`;
+      // hear (and tune) your robot voice before playing
+      const rv = this.robovoice;
+      vr.insertAdjacentHTML(
+        "beforeend",
+        rv.status === "error"
+          ? `<div class="err">Robot voice failed to load (${esc(rv.error)}) — using the browser's voice.</div>`
+          : `<button id="voice-preview">▶ Hear my robot voice</button>`,
+      );
+      document.getElementById("voice-preview")?.addEventListener("click", () => {
+        unlockAudio();
+        const line = PREVIEW_LINES[Math.floor(Math.random() * PREVIEW_LINES.length)]!;
+        void this.robovoice.say(this.me, line, this.self.color, 0.8);
+      });
     } else if (l.settings.proximityVoice) {
       vr.innerHTML = this.voice.micReady
         ? `<div class="small">MIC ${this.voice.muted ? "MUTED" : "LIVE"} — ${kb("T", "the MIC button")} toggles. Voices fade with distance and walls.</div>`

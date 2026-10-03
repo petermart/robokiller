@@ -1,14 +1,11 @@
-// Robo speech: your mic → text → everyone nearby hears it in a robot TTS voice. Nobody
-// hears your real voice.
+// Robo speech, the listening half: your mic → text, which is sent to everyone nearby and
+// spoken by ./robovoice/ in a robot voice. Nobody hears your real voice.
 //
 // Two speech-to-text engines:
 //  1. The browser's Web Speech API (free, streams words as you talk) — Chrome, Edge, Safari.
 //  2. If that's missing or refused (Firefox, Brave…), an on-device model (LocalSTT) that
 //     downloads in the background. The game is fully playable meanwhile; only talking
 //     waits until the model is ready.
-//
-// The voice pitch comes from the *displayed* colour, so a disguised impostor sounds
-// exactly like the robot they are impersonating.
 
 import { LocalSTT } from "./localstt.ts";
 
@@ -32,7 +29,6 @@ export class RoboSpeech {
   private holding = false;
   private finalText = "";
   private interim = "";
-  private voice: SpeechSynthesisVoice | null = null;
   readonly local = new LocalSTT();
   /** Which engine robo speech uses. Starts on the browser's own if it has one. */
   engine: "web" | "local" = RoboSpeech.webSupported() ? "web" : "local";
@@ -47,17 +43,6 @@ export class RoboSpeech {
   }
 
   constructor(private getStream: () => Promise<MediaStream | null>) {
-    const pick = () => {
-      const vs = speechSynthesis.getVoices();
-      // A plain local English voice; every robot shares it so nobody is identifiable.
-      this.voice =
-        vs.find((v) => /en/i.test(v.lang) && v.localService && /david|mark|daniel|alex|fred/i.test(v.name)) ??
-        vs.find((v) => /en/i.test(v.lang) && v.localService) ??
-        vs.find((v) => /en/i.test(v.lang)) ??
-        null;
-    };
-    pick();
-    speechSynthesis.onvoiceschanged = pick;
     this.local.onChange = () => this.onStatus();
   }
 
@@ -203,13 +188,4 @@ export class RoboSpeech {
     if (text) this.onText(text);
   }
 
-  speak(text: string, color: number, volume: number) {
-    if (volume <= 0.02) return;
-    const u = new SpeechSynthesisUtterance(text);
-    if (this.voice) u.voice = this.voice;
-    u.pitch = 0.15 + ((color * 7) % 10) * 0.17; // spread colours across 0.15–1.7
-    u.rate = 1.08;
-    u.volume = Math.min(1, volume);
-    speechSynthesis.speak(u);
-  }
 }

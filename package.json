@@ -9,6 +9,7 @@
     "test": "bun scripts/test-twists.ts && bun scripts/test-movement.ts"
   },
   "dependencies": {
+    "mespeak": "2.0.2",
     "three": "^0.186.1"
   },
   "devDependencies": {

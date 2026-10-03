@@ -17,6 +17,10 @@ export class Robot {
   private antenna: THREE.Group;
   private head: THREE.Group;
   private eyes: THREE.Mesh[] = [];
+  /** Glowing bar under the eyes that opens with the robot's voice. */
+  private mouth: THREE.Mesh;
+  private talk = { level: 0, bright: 0.5 };
+  private talkTarget = { level: 0, bright: 0.5 };
   private armL: THREE.Group;
   private armR: THREE.Group;
   private legL: THREE.Group;
@@ -77,6 +81,12 @@ export class Robot {
       noInk(blush);
       this.head.add(blush);
     }
+    // mouth: a thin glowing line when quiet, opening with loudness
+    this.mouth = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.022, 0.02), glow(0xd8fbff));
+    this.mouth.position.set(0, -0.112, 0.296);
+    this.mouth.name = "mouth";
+    noInk(this.mouth);
+    this.head.add(this.mouth);
     // ear bolts
     for (const sx of [-0.37, 0.37]) {
       const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.06, 6), toon(METAL));
@@ -192,6 +202,12 @@ export class Robot {
     this.legL.visible = this.legR.visible = !g;
   }
 
+  /** How loud (0–1) and how bright (0–1) this robot's voice is right now. */
+  setTalk(level: number, bright: number) {
+    this.talkTarget.level = level;
+    this.talkTarget.bright = bright;
+  }
+
   snap(x: number, z: number, ry: number) {
     this.pos.set(x, 0, z);
     this.target.set(x, 0, z);
@@ -246,6 +262,14 @@ export class Robot {
       if (this.blinkAt < -0.11) this.blinkAt = 2 + Math.random() * 4;
     }
     for (const e of this.eyes) e.scale.y += (eyeY - e.scale.y) * Math.min(1, dt * 30);
+
+    // mouth: snaps open fast, closes a touch slower, like a level meter
+    const tl = this.talkTarget.level;
+    this.talk.level += (tl - this.talk.level) * Math.min(1, dt * (tl > this.talk.level ? 30 : 12));
+    this.talk.bright += (this.talkTarget.bright - this.talk.bright) * Math.min(1, dt * 15);
+    const open = this.talk.level, br = this.talk.bright;
+    // bright sounds ("ee", "s") → wide and flat; dark ones ("oo", "ah") → narrow and tall
+    this.mouth.scale.set(0.8 + br * 0.55 - open * (1 - br) * 0.25, 1 + open * (3.6 - br * 1.4), 1);
 
     this.sparks.visible = this.using;
     if (this.using) {

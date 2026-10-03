@@ -11,6 +11,25 @@ const DEV = process.env.NODE_ENV !== "production";
 const g = globalThis as unknown as { __rkLobbies?: Map<string, Lobby>; __rkTick?: ReturnType<typeof setInterval> };
 const lobbies = (g.__rkLobbies ??= new Map<string, Lobby>());
 
+/**
+ * The robo-voice synthesizer (eSpeak) runs in a Web Worker. It's bundled here at startup
+ * rather than into the game, so its few MB only download for lobbies with robo speech on.
+ */
+const voiceWorker = await (async () => {
+  const out = await Bun.build({
+    entrypoints: [join(import.meta.dir, "../client/audio/robovoice/worker.ts")],
+    target: "browser",
+    format: "iife",
+    minify: true,
+  });
+  if (!out.success || !out.outputs[0]) {
+    console.error("[robovoice] worker build failed", out.logs);
+    return null;
+  }
+  const js = await out.outputs[0].text();
+  return { js, gz: Bun.gzipSync(js) };
+})();
+
 /** Home-screen app files (manifest + icons) — served as-is, outside the HTML bundle. */
 const PUBLIC = join(import.meta.dir, "../public");
 const asset = (name: string, type: string) => () =>
@@ -86,6 +105,17 @@ const server = Bun.serve<SocketData>({
     "/": index,
     "/api/ice": async () => Response.json(await iceServers()),
     "/health": () => Response.json({ ok: true, lobbies: lobbies.size }),
+    "/robovoice-worker.js": (req: Request) => {
+      if (!voiceWorker) return new Response("robovoice worker unavailable", { status: 503 });
+      const gzip = (req.headers.get("accept-encoding") ?? "").includes("gzip");
+      return new Response(gzip ? voiceWorker.gz : voiceWorker.js, {
+        headers: {
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "public, max-age=86400",
+          ...(gzip ? { "Content-Encoding": "gzip" } : {}),
+        },
+      });
+    },
     "/manifest.webmanifest": asset("manifest.webmanifest", "application/manifest+json"),
     "/apple-touch-icon.png": asset("apple-touch-icon.png", "image/png"),
     "/icon-192.png": asset("icon-192.png", "image/png"),

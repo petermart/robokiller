@@ -17,7 +17,8 @@ export function makeAsh(color: number, kind: "ash" | "husk"): THREE.Group {
     r.rig.rotation.x = -Math.PI / 2;
     r.rig.position.y = 0.3;
     r.root.traverse((o) => {
-      if ((o as THREE.Mesh).geometry instanceof THREE.SphereGeometry) o.visible = false;
+      // eyes and mouth go dark on a powered-down shell
+      if ((o as THREE.Mesh).geometry instanceof THREE.SphereGeometry || o.name === "mouth") o.visible = false;
     });
     g.add(r.root);
     return g;
