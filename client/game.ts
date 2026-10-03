@@ -75,9 +75,14 @@ export class Game {
   private robots = new Map<string, Robot>();
   private bodies = new Map<string, THREE.Group>();
   private fx: Fx;
-  private robo = new RoboSpeech();
+  // The mic stream comes from the voice module; in robo mode it never sends raw audio.
+  private robo = new RoboSpeech(() => this.voice.enableMic());
   private raycaster = new THREE.Raycaster();
   private overlay: Overlay = "none";
+  /** Analog stick from touch controls: x = strafe right, y = forward, each -1..1. */
+  stick = { x: 0, y: 0 };
+  /** Phones and tablets: no pointer lock, touch controls instead. */
+  readonly isTouch = matchMedia("(pointer: coarse)").matches;
   private phase: Phase = "lobby";
   private action: { label: string; run: () => void } | null = null;
   private bubbles: { id: string; el: HTMLElement; until: number }[] = [];
@@ -108,6 +113,11 @@ export class Game {
       this.showDictation("sent", text);
     };
     this.robo.onPartial = (text) => this.showDictation("listening", text);
+    // model download progress / engine switch: only the bits that show it
+    this.robo.onStatus = () => {
+      this.renderCorner();
+      this.renderVoiceRow();
+    };
 
     this.bindInput();
     this.buildNeeds();
@@ -142,10 +152,7 @@ export class Game {
       if (!this.active || typing(e)) return;
       if (e.code === "Tab") {
         e.preventDefault();
-        if (this.phase === "lobby") {
-          this.lobbyPanelOpen = !this.lobbyPanelOpen;
-          this.renderLobby();
-        }
+        this.toggleLobbyPanel();
         return;
       }
       if (e.repeat) {
@@ -157,17 +164,13 @@ export class Game {
     });
     window.addEventListener("keyup", (e) => {
       this.keys.delete(e.code);
-      if (e.code === "KeyT" && this.robo.active) {
-        this.robo.stop();
-        // if nothing was recognised, onText never fires — drop the bar after a beat
-        this.dictationTimer = window.setTimeout(() => ($("dictation").hidden = true), 1500);
-      }
+      this.releaseKey(e.code);
     });
     window.addEventListener("blur", () => this.keys.clear());
 
     this.canvas.addEventListener("click", () => {
       unlockAudio();
-      if (!this.active) return;
+      if (!this.active || this.isTouch) return;
       if (!this.locked && this.overlayAllowsLook()) {
         void this.canvas.requestPointerLock();
         return;
@@ -190,11 +193,84 @@ export class Game {
       this.locked = document.pointerLockElement === this.canvas;
     });
     window.addEventListener("mousemove", (e) => {
-      if (!this.locked) return;
-      const s = 0.0024 / (this.inNest ? this.fovZoom() : 1);
-      this.yaw -= e.movementX * s;
-      this.pitch += e.movementY * s * (this.inNest || this.inVent ? -1 : 1);
+      if (this.locked) this.look(e.movementX, e.movementY);
     });
+  }
+
+  /** Turn the view by a pointer delta in pixels (mouse, or a finger at `scale`). */
+  look(dx: number, dy: number, scale = 1) {
+    const s = (0.0024 * scale) / (this.inNest ? this.fovZoom() : 1);
+    this.yaw -= dx * s;
+    this.pitch += dy * s * (this.inNest || this.inVent ? -1 : 1);
+  }
+
+  // ---- entry points for touch controls (same actions as the keyboard) ----
+
+  pressKey(code: string) {
+    if (!this.active) return;
+    if (code === "Tab") {
+      this.toggleLobbyPanel();
+      return;
+    }
+    this.onKey(code);
+  }
+
+  releaseKey(code: string) {
+    if (code === "KeyT" && this.robo.active) {
+      this.robo.stop();
+      // if nothing was recognised, onText never fires — drop the bar after a beat
+      this.dictationTimer = window.setTimeout(() => ($("dictation").hidden = true), 1500);
+    }
+  }
+
+  /** A tap on the view: same as a desktop click (spot a sniper / fire). */
+  tap() {
+    if (this.active) this.onClick();
+  }
+
+  fire() {
+    if (this.playing && this.alive && this.inNest) this.shoot();
+  }
+
+  cycleZoom() {
+    this.zoom = this.zoom < 2 ? 3 : this.zoom < 5 ? 6 : 1;
+  }
+
+  toggleLobbyPanel() {
+    if (this.phase !== "lobby") return;
+    this.lobbyPanelOpen = !this.lobbyPanelOpen;
+    this.renderLobby();
+  }
+
+  /** Everything the touch buttons need to decide what to show. */
+  touchState() {
+    const me = this.meView;
+    const near = (pts: { x: number; z: number }[], r: number) => pts.some((p) => dist(this.x, this.z, p.x, p.z) < r);
+    return {
+      active: this.active,
+      phase: this.phase,
+      overlay: this.overlay,
+      alive: this.alive,
+      role: this.role,
+      inVent: this.inVent,
+      inNest: this.inNest,
+      using: !!me?.using,
+      action: this.action?.label.replace(/^[A-Z] — /, "") ?? null,
+      killCd: me?.killCd ?? 0,
+      canKill: !!this.killTarget(),
+      wrongOrder: !!(me?.target && this.killTarget() && this.killTarget()!.id !== me.target.id),
+      disguiseCd: me?.disguiseCd ?? 0,
+      snipeCd: me?.snipeCd ?? 0,
+      nearVent: near(VENTS, 1.4),
+      zoom: this.zoom,
+      robo: !!this.settings?.roboSpeech,
+      voice: !!this.settings?.proximityVoice,
+      micOn: this.voice.micReady && !this.voice.muted,
+      talking: this.robo.active,
+      roboReady: this.robo.ready,
+      roboLabel: this.robo.shortStatus,
+      panelOpen: this.lobbyPanelOpen,
+    };
   }
 
   private overlayAllowsLook() {
@@ -230,8 +306,8 @@ export class Game {
     if (code === "KeyT") {
       if (this.settings?.roboSpeech) {
         if (this.alive || this.phase !== "meeting") {
-          this.robo.start();
-          this.showDictation("listening");
+          if (this.robo.start()) this.showDictation("listening");
+          else this.toast(`Robo speech: ${this.robo.statusText} — talking unlocks when it's ready`);
         }
       } else {
         void this.toggleMic();
@@ -415,6 +491,9 @@ export class Game {
       m.players.filter((p) => p.connected).map((p) => p.id),
     );
     this.voice.setSending(m.settings.proximityVoice && !m.settings.roboSpeech);
+    // Robo speech on and no browser speech engine: start the on-device model downloading
+    // in the background now, so it's (usually) ready before anyone needs to talk.
+    if (m.settings.roboSpeech) this.robo.prepare();
     this.renderLobby();
     if (this.overlay === "meeting") this.renderMeeting();
     // host may have changed (or just become known after a rejoin)
@@ -580,16 +659,19 @@ export class Game {
       const b = this.keys.has("KeyS") || this.keys.has("ArrowDown") ? 1 : 0;
       const l = this.keys.has("KeyA") || this.keys.has("ArrowLeft") ? 1 : 0;
       const r = this.keys.has("KeyD") || this.keys.has("ArrowRight") ? 1 : 0;
+      // keys and the touch stick add up; the stick is analog, so a light push walks slowly
+      const fwd = f - b + this.stick.y, side = r - l + this.stick.x;
       const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
-      mx = fx * (f - b) + -fz * (r - l);
-      mz = fz * (f - b) + fx * (r - l);
+      mx = fx * fwd + -fz * side;
+      mz = fz * fwd + fx * side;
     }
     const len = Math.hypot(mx, mz);
+    const throttle = Math.min(1, len);
     const moving = len > 0.01;
     if (moving && me?.using) this.net.send({ t: "cancelUse" });
     if (moving && !me?.using) {
       const ghost = !this.alive && this.phase !== "lobby" && this.phase !== "over";
-      const sp = MOVE_SPEED * (ghost ? 1.4 : 1) * dt;
+      const sp = MOVE_SPEED * (ghost ? 1.4 : 1) * throttle * dt;
       let nx = this.x + (mx / len) * sp, nz = this.z + (mz / len) * sp;
       if (!ghost) ({ x: nx, z: nz } = collide(nx, nz, PLAYER_RADIUS));
       else {
@@ -783,7 +865,7 @@ export class Game {
     const inGame = this.phase !== "lobby" && !!me;
     $("hud").hidden = !this.active;
     $("needs").hidden = !inGame || this.phase === "over";
-    $("lock-hint").hidden = this.locked || this.overlay !== "none";
+    $("lock-hint").hidden = this.isTouch || this.locked || this.overlay !== "none";
 
     const highlight = new Set<(typeof NEEDS)[number]>();
     if (me && inGame) {
@@ -897,7 +979,15 @@ export class Game {
   renderCorner() {
     const mic = $("mic-btn");
     const robo = this.settings?.roboSpeech;
-    mic.textContent = robo ? "HOLD T" : this.voice.micReady ? (this.voice.muted ? "MUTED" : "MIC ON") : "MIC";
+    mic.textContent = robo
+      ? this.robo.ready
+        ? "HOLD T"
+        : this.robo.shortStatus
+      : this.voice.micReady
+        ? this.voice.muted
+          ? "MUTED"
+          : "MIC ON"
+        : "MIC";
     mic.classList.toggle("off", !robo && (!this.voice.micReady || this.voice.muted));
     mic.title = robo ? "Robo speech: hold T to talk" : "Toggle microphone (T)";
     $("music-btn").classList.toggle("off", !musicOn);
@@ -1004,17 +1094,7 @@ export class Game {
     }
     $("rules-owner").textContent = host ? "(you're host)" : "(host sets these)";
 
-    const vr = $("voice-row");
-    if (l.settings.roboSpeech) {
-      vr.innerHTML = RoboSpeech.supported()
-        ? `<div class="small">ROBO SPEECH ON — hold <b>T</b>, speak, release. Everyone hears a robot voice in your current colour.</div>`
-        : `<div class="err">Robo speech needs Chrome or Edge (Web Speech API).</div>`;
-    } else if (l.settings.proximityVoice) {
-      vr.innerHTML = this.voice.micReady
-        ? `<div class="small">MIC ${this.voice.muted ? "MUTED" : "LIVE"} — T toggles. Voices fade with distance and walls.</div>`
-        : `<button id="enable-mic">Enable microphone</button>`;
-      $("enable-mic")?.addEventListener("click", () => void this.toggleMic());
-    } else vr.innerHTML = `<div class="small">Voice chat is off.</div>`;
+    this.renderVoiceRow();
 
     const start = $<HTMLButtonElement>("start");
     start.hidden = !host;
@@ -1025,6 +1105,31 @@ export class Game {
       const url = `${location.origin}/?code=${l.code}`;
       void navigator.clipboard.writeText(url).then(() => this.toast("Invite link copied"));
     };
+  }
+
+  /** The lobby's voice line: mic state, or robo speech engine + model download. */
+  private renderVoiceRow() {
+    const l = this.lobby;
+    const vr = document.getElementById("voice-row");
+    if (!l || !vr) return;
+    if (l.settings.roboSpeech) {
+      const r = this.robo;
+      vr.innerHTML =
+        r.engine === "web"
+          ? `<div class="small">ROBO SPEECH ON — hold <b>T</b>, speak, release. Everyone hears a robot voice in your current colour.</div>`
+          : r.local.status === "ready"
+            ? `<div class="small">ROBO SPEECH ON (on-device model) — hold <b>T</b>, speak, release.</div>`
+            : r.local.status === "error"
+              ? `<div class="err">Voice model failed to load: ${esc(r.local.error)}</div>`
+              : `<div class="small">ROBO SPEECH: this browser has no built-in speech engine, so a voice model is
+                 downloading in the background (one time, ~28 MB). You can play now; talking unlocks at 100%.</div>
+                 <div class="model-bar"><div style="width:${Math.round(r.local.progress * 100)}%"></div></div>`;
+    } else if (l.settings.proximityVoice) {
+      vr.innerHTML = this.voice.micReady
+        ? `<div class="small">MIC ${this.voice.muted ? "MUTED" : "LIVE"} — T toggles. Voices fade with distance and walls.</div>`
+        : `<button id="enable-mic">Enable microphone</button>`;
+      document.getElementById("enable-mic")?.addEventListener("click", () => void this.toggleMic());
+    } else vr.innerHTML = `<div class="small">Voice chat is off.</div>`;
   }
 
   /** Lobby roster with each robot's mic and our voice link to them. */

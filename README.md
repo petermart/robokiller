@@ -31,6 +31,16 @@ your seat. (Background tabs pause rendering, so drive one tab at a time.)
 | M | music on/off | same |
 | Tab | hide/show the lobby panel | same |
 
+### On a phone
+
+Turn it sideways (portrait shows a rotate prompt; Android also goes fullscreen and locks
+landscape on the first tap). Multitouch twin-stick:
+
+- **Left thumb** — floating joystick wherever you touch the left side; analog speed.
+- **Right thumb** — drag to look; a quick **tap** = a desktop click (spot a sniper at the crosshair).
+- **Buttons** follow what you can do: USE/REPORT, EXPLODE/DISGUISE/VENT for the AI,
+  ◀ ▶ CLIMB OUT in vents, FIRE/ZOOM/EXIT in a nest, MIC or HOLD TALK, and RULES in the lobby.
+
 ## How it plays
 
 - **Needs.** Every robot has four bars — Electricity, Fluid/Oil, Software Update, Gears. Every
@@ -69,7 +79,12 @@ your seat. (Background tabs pause rendering, so drive one tab at a time.)
 - **Robo speech** (host toggle): mic → text with the browser's Web Speech API (same approach
   as the video-analyzer extension) → everyone nearby hears a shared robot TTS voice pitched by
   the speaker's **displayed** colour. No raw audio leaves anyone's machine, so a disguised
-  impostor is indistinguishable from the robot they copied. Needs Chrome or Edge.
+  impostor is indistinguishable from the robot they copied.
+  - Speech-to-text uses the browser's built-in engine where there is one (Chrome, Edge, Safari).
+  - Otherwise (Firefox, Brave, …) it falls back to an **on-device model** — Moonshine-tiny via
+    transformers.js, ~28 MB, downloaded once in the background and cached. The game plays
+    normally meanwhile; only push-to-talk waits, showing `VOICE 43%`. No audio leaves the device
+    and there's no API cost.
 - STUN only by default. For friends behind strict NATs, set `TURN_URL`, `TURN_USERNAME`,
   `TURN_CREDENTIAL` on the server.
 

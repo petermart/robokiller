@@ -223,6 +223,9 @@ export class Voice {
   setMix(id: string, gain: number, pan: number) {
     const p = this.peers.get(id);
     if (!p) return;
+    // a bad position upstream must mean silence, not an exception every 100ms
+    if (!Number.isFinite(gain)) gain = 0;
+    if (!Number.isFinite(pan)) pan = 0;
     const t = p.gain.context.currentTime;
     p.gain.gain.setTargetAtTime(gain, t, 0.08);
     p.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), t, 0.08);

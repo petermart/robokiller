@@ -865,3 +865,266 @@ body.in-game #corner {
 #lobby-players .link.wait {
   color: #ffd84a;
 }
+
+/* ================================================================ touch / phones */
+#touch {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+#lobby-panel {
+  z-index: 5;
+}
+#overlay {
+  z-index: 6;
+}
+#corner,
+#dictation,
+#toasts {
+  z-index: 8;
+}
+#perf-banner {
+  z-index: 30;
+}
+#stick {
+  position: absolute;
+  width: 124px;
+  height: 124px;
+  margin: -62px 0 0 -62px;
+  border-radius: 50%;
+  border: 3px solid rgba(74, 240, 255, 0.55);
+  background: rgba(10, 8, 16, 0.35);
+  pointer-events: none;
+}
+#stick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: rgba(74, 240, 255, 0.55);
+  box-shadow: 0 0 14px rgba(74, 240, 255, 0.6);
+  transform: translate(-50%, -50%);
+}
+#touch-buttons {
+  display: none;
+}
+body.touch #touch-buttons {
+  position: absolute;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 7;
+  display: flex;
+  flex-wrap: wrap-reverse;
+  flex-direction: row-reverse;
+  align-items: flex-end;
+  gap: 10px;
+  width: 240px;
+  pointer-events: none;
+}
+#touch-buttons .tb {
+  pointer-events: auto;
+  position: relative;
+  width: 70px;
+  height: 70px;
+  padding: 4px;
+  border-radius: 50%;
+  font-family: var(--pixel);
+  font-size: 8px;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
+  background: rgba(20, 14, 28, 0.78);
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#touch-buttons .tb.big {
+  width: 92px;
+  height: 92px;
+  font-size: 9px;
+  border-color: var(--neon);
+}
+#touch-buttons .tb.hot {
+  border-color: var(--hot);
+}
+#touch-buttons .tb:disabled {
+  opacity: 0.4;
+}
+#touch-buttons .tb .cd {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-style: normal;
+  font-size: 18px;
+  color: #fff;
+  pointer-events: none;
+}
+#touch-buttons .tb .cd:empty {
+  display: none;
+}
+#touch-buttons .tb .cd:not(:empty) {
+  background: rgba(0, 0, 0, 0.55);
+}
+body.touch #abilities,
+body.touch #lock-hint,
+body.touch .keys {
+  display: none !important;
+}
+body.touch.in-game #corner {
+  top: max(8px, env(safe-area-inset-top));
+  bottom: auto;
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+body.touch #toasts {
+  top: 52px;
+}
+body.touch #needs {
+  left: max(16px, env(safe-area-inset-left));
+}
+body.touch #crosshair {
+  opacity: 0.85;
+}
+
+/* sideways only */
+#rotate {
+  display: none;
+}
+@media (orientation: portrait) {
+  body.touch #rotate {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: #140c10;
+    font-family: var(--pixel);
+    font-size: 12px;
+    text-align: center;
+    padding: 24px;
+  }
+  body.touch #rotate div {
+    font-size: 64px;
+    color: var(--neon);
+    animation: spin90 2s ease-in-out infinite;
+  }
+}
+@keyframes spin90 {
+  0%, 30% { transform: rotate(0deg); }
+  60%, 100% { transform: rotate(90deg); }
+}
+
+/* short landscape screens (phones on their side) */
+@media (max-height: 500px) {
+  #needs {
+    width: 168px;
+    gap: 3px;
+    top: 8px;
+  }
+  .need {
+    grid-template-columns: 20px 1fr;
+    padding: 2px 5px;
+    gap: 4px;
+  }
+  .need .icon {
+    font-size: 14px;
+  }
+  .need .label {
+    font-size: 14px;
+  }
+  .need .bar {
+    height: 5px;
+    margin-top: 2px;
+  }
+  #role-tag {
+    top: 8px;
+    font-size: 8px;
+    padding: 5px 7px;
+  }
+  #prompt {
+    bottom: 18px;
+    font-size: 9px;
+    padding: 6px 10px;
+  }
+  #mode-hint {
+    top: 46px;
+    font-size: 9px;
+  }
+  #title-screen {
+    gap: 8px;
+    padding-bottom: 10px;
+  }
+  .menu {
+    gap: 6px;
+    padding: 10px;
+  }
+  .menu button.big {
+    padding: 8px 12px;
+  }
+  .menu input {
+    font-size: 20px;
+    padding: 3px 8px;
+  }
+  .tagline {
+    font-size: 8px;
+  }
+  #lobby-panel {
+    top: 8px;
+    left: max(8px, env(safe-area-inset-left));
+    max-height: calc(100% - 16px);
+    padding: 10px;
+    gap: 6px;
+  }
+  .code {
+    font-size: 20px;
+  }
+  .meeting {
+    max-height: 100%;
+    overflow-y: auto;
+    padding: 10px;
+    gap: 8px;
+  }
+  .chat {
+    min-height: 0;
+    max-height: none;
+  }
+  .card {
+    padding: 4px 6px;
+  }
+  .splash h1 {
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+  .splash p {
+    font-size: 18px;
+  }
+  #dictation {
+    bottom: 120px;
+    font-size: 20px;
+  }
+}
+
+.model-bar {
+  height: 8px;
+  background: #000;
+  border: 1px solid #555;
+  margin-top: 4px;
+}
+.model-bar div {
+  height: 100%;
+  background: #7dff6a;
+  transition: width 0.2s linear;
+}

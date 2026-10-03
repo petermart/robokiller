@@ -2,7 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Robokiller</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -73,7 +75,12 @@
         <div id="subtitle"></div>
       </section>
 
+      <div id="touch" hidden>
+        <div id="stick" hidden><div id="stick-knob"></div></div>
+      </div>
       <section id="overlay" hidden></section>
+      <div id="touch-buttons"></div>
+      <div id="rotate"><div>↻</div><p>Turn your phone sideways to play</p></div>
       <div id="bubbles"></div>
       <div id="dictation" hidden><span class="dict-label"></span><span class="dict-text"></span></div>
       <div id="toasts"></div>

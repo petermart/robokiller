@@ -8,6 +8,7 @@ import { VoxelTitle } from "./render/title.ts";
 import { NO_INK } from "./render/toon.ts";
 import { World } from "./render/world.ts";
 import { PerfWatch } from "./perf.ts";
+import { TouchControls, goLandscape, isTouchDevice } from "./touch.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -68,6 +69,17 @@ net.onMessage = (m) => {
   game.onMessage(m);
 };
 net.onStatus = (up) => $("net-status").classList.toggle("down", !up);
+
+// ------------------------------------------------------------------ phones
+
+const touch = isTouchDevice() ? new TouchControls(game, $("touch")) : null;
+if (touch) {
+  document.body.classList.add("touch");
+  // Android: fullscreen + landscape on the first tap. iOS can't, so it gets the rotate prompt.
+  window.addEventListener("pointerdown", goLandscape, { once: true });
+  // iOS only unlocks audio from touchend/click, not pointerdown
+  window.addEventListener("touchend", () => { unlockAudio(); audio(); audioReady = true; }, { once: true });
+}
 
 let audioReady = false;
 window.addEventListener(
@@ -177,6 +189,7 @@ function frame() {
   const flash = world.update(dt);
   if (game.active) {
     game.update(dt);
+    touch?.update();
   } else {
     title.update(dt);
     // slow drift in front of the tower, rain between us and the glass

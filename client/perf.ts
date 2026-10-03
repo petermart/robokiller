@@ -95,7 +95,9 @@ export class PerfWatch {
   }
 
   private applyQuality() {
-    const pr = this.lowQuality ? 0.75 : Math.min(devicePixelRatio, 1.75);
+    // phone GPUs drive 3x-density screens; 1.25 looks sharp enough and keeps the frame rate
+    const cap = matchMedia("(pointer: coarse)").matches ? 1.25 : 1.75;
+    const pr = this.lowQuality ? 0.75 : Math.min(devicePixelRatio, cap);
     this.renderer.setPixelRatio(pr);
     this.post.bloom.enabled = !this.lowQuality;
     this.renderer.setSize(innerWidth, innerHeight, false);
