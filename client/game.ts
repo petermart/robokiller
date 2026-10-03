@@ -250,6 +250,15 @@ export class Game {
     this.zoom = this.zoom < 2 ? 3 : this.zoom < 5 ? 6 : 1;
   }
 
+  get scopeZoom() {
+    return this.zoom;
+  }
+
+  /** Pinch zoom on the sniper scope. */
+  setZoom(z: number) {
+    this.zoom = Math.max(1, Math.min(8, z));
+  }
+
   toggleLobbyPanel() {
     if (this.phase !== "lobby") return;
     this.lobbyPanelOpen = !this.lobbyPanelOpen;

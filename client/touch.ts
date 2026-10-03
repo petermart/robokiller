@@ -30,6 +30,9 @@ export function isTouchDevice() {
 
 export class TouchControls {
   private stickId: number | null = null;
+  /** Fingers on the view in scope/vent mode, where both halves look and two fingers pinch. */
+  private fingers = new Map<number, { x: number; y: number }>();
+  private pinch: { dist: number; zoom: number } | null = null;
   private stickOrigin = { x: 0, y: 0 };
   private lookId: number | null = null;
   private lookLast = { x: 0, y: 0 };
@@ -78,8 +81,25 @@ export class TouchControls {
 
   // ------------------------------------------------------------------ sticks
 
+  /** In a sniper nest or a vent you can't walk: the whole screen looks, and pinch zooms. */
+  private get lookOnly() {
+    const s = this.game.touchState();
+    return s.inNest || s.inVent;
+  }
+
+  private pinchDist() {
+    const [a, b] = [...this.fingers.values()];
+    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+  }
+
   private down(e: PointerEvent) {
     unlockAudio();
+    if (this.lookOnly) {
+      this.fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.fingers.size === 2) this.pinch = { dist: this.pinchDist() || 1, zoom: this.game.scopeZoom };
+      this.lookStart = { x: e.clientX, y: e.clientY, t: performance.now() };
+      return;
+    }
     if (e.clientX < innerWidth * 0.45 && this.stickId === null) {
       this.stickId = e.pointerId;
       this.stickOrigin = { x: e.clientX, y: e.clientY };
@@ -95,6 +115,20 @@ export class TouchControls {
   }
 
   private move(e: PointerEvent) {
+    const f = this.fingers.get(e.pointerId);
+    if (f) {
+      if (this.pinch && this.fingers.size >= 2) {
+        f.x = e.clientX;
+        f.y = e.clientY;
+        // spread fingers = zoom in, like photos
+        if (this.lookOnly) this.game.setZoom(this.pinch.zoom * (this.pinchDist() / this.pinch.dist));
+      } else {
+        this.game.look(e.clientX - f.x, e.clientY - f.y, LOOK_SCALE);
+        f.x = e.clientX;
+        f.y = e.clientY;
+      }
+      return;
+    }
     if (e.pointerId === this.stickId) {
       let dx = e.clientX - this.stickOrigin.x, dy = e.clientY - this.stickOrigin.y;
       const d = Math.hypot(dx, dy);
@@ -114,6 +148,11 @@ export class TouchControls {
   }
 
   private up(e: PointerEvent, cancelled = false) {
+    if (this.fingers.delete(e.pointerId)) {
+      if (this.fingers.size < 2) this.pinch = null;
+      // no tap-to-shoot in the scope: only the FIRE button fires, so aiming can't misfire
+      return;
+    }
     if (e.pointerId === this.stickId) {
       this.stickId = null;
       this.game.stick = { x: 0, y: 0 };
