@@ -179,7 +179,7 @@ export class Game {
       unlockAudio();
       if (!this.active || this.isTouch) return;
       if (!this.locked && this.overlayAllowsLook()) {
-        void this.canvas.requestPointerLock();
+        void this.canvas.requestPointerLock?.();
         return;
       }
       if (this.locked) this.onClick();
@@ -594,7 +594,7 @@ export class Game {
 
   private onPhase(prev: Phase, next: Phase) {
     if (next === "meeting") {
-      document.exitPointerLock();
+      document.exitPointerLock?.(); // absent on iPhone Safari — calling it threw
       sfx("alarm");
       this.chatLog = [];
       this.showMeeting();
@@ -1187,7 +1187,7 @@ export class Game {
     o.hidden = mode === "none";
     o.className = clear ? "clear" : "";
     o.innerHTML = html;
-    if (mode !== "none" && mode !== "reveal") document.exitPointerLock();
+    if (mode !== "none" && mode !== "reveal") document.exitPointerLock?.(); // absent on iPhone Safari — calling it threw
   }
 
   closeOverlay() {
