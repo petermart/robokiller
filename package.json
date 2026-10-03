@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "bun --hot server/index.ts",
     "start": "NODE_ENV=production bun server/index.ts",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "test": "bun scripts/test-twists.ts"
   },
   "dependencies": {
     "three": "^0.186.1"

@@ -19,7 +19,7 @@ export class Fx {
   }
 
   explode(x: number, z: number, color: number) {
-    const hex = COLORS[color]?.hex ?? 0xffffff;
+    const hex = COLORS[color]?.hex ?? 0x8a8c94; // -1 = anonymous: grey debris
     const g = new THREE.Group();
     g.position.set(x, 0.8, z);
     const bits: { m: THREE.Mesh; v: THREE.Vector3 }[] = [];

@@ -77,16 +77,31 @@ export interface MeView {
   vent: number;
   nest: number;
   meetingsLeft: number;
+  /** Assigned kills: who the AI must explode next (real identity). */
+  target: { id: string; name: string; color: number } | null;
   /** Server-side position; the client snaps to it whenever `tp` changes. */
   x: number;
   z: number;
   tp: number;
 }
 
+/** One row of the voting roster, by the identity robots are *showing*. */
+export interface MeetingCard {
+  /** Player id to vote for; null for a colour nobody alive is wearing. */
+  id: string | null;
+  color: number;
+  name: string;
+  alive: boolean;
+}
+
 export interface MeetingView {
   reason: "button" | "body" | "sniper";
   caller: string;
+  callerName: string;
+  callerColor: number;
+  /** null when deaths are anonymous or nobody was reported. */
   bodyColor: number | null;
+  cards: MeetingCard[];
   voted: string[];
   discussionLeft: number;
 }
@@ -127,12 +142,14 @@ export type ServerMsg =
   | {
       t: "ejected";
       id: string | null;
+      name: string | null;
+      color: number | null;
+      tally: { name: string; color: number | null; n: number }[];
       wasImpostor: boolean | null;
       tie: boolean;
-      votes: Record<string, string>;
     }
   | { t: "over"; winner: Role; reason: string; impostor: string }
-  | { t: "chat"; from: string; text: string }
+  | { t: "chat"; from: string; text: string; name: string; c: number }
   | { t: "robo"; from: string; text: string; x: number; z: number; c: number; global: boolean }
   | { t: "rtc"; from: string; data: unknown }
   | { t: "toast"; text: string }

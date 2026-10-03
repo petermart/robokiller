@@ -751,6 +751,13 @@ body.in-game #corner {
   #needs {
     width: 180px;
   }
+  /* stack the role tag under the needs instead of on top of them */
+  #role-tag {
+    top: 196px;
+    left: 16px;
+    right: auto;
+    text-align: left;
+  }
 }
 
 #dictation {

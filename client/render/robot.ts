@@ -162,7 +162,7 @@ export class Robot {
   setColor(c: number) {
     if (c === this.color) return;
     this.color = c;
-    const hex = COLORS[c]?.hex ?? 0xffffff;
+    const hex = COLORS[c]?.hex ?? 0x8a8c94; // -1 = anonymous: grey
     this.bodyMat.color.setHex(hex);
     this.headMat.color.setHex(hex);
     (this.antennaBall.material as THREE.MeshBasicMaterial).color.setHex(hex).multiplyScalar(1.6);
@@ -272,7 +272,8 @@ export class Robot {
 /** A heap of ash and colored scrap where a robot exploded. */
 export function makeAsh(color: number, kind: "ash" | "husk"): THREE.Group {
   const g = new THREE.Group();
-  const hex = COLORS[color]?.hex ?? 0xffffff;
+  // color -1 = anonymous death: grey scrap, nothing to identify
+  const hex = COLORS[color]?.hex ?? 0x8a8c94;
   if (kind === "husk") {
     // powered-down: the robot slumped on its back, eyes dark
     const r = new Robot(color);

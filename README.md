@@ -48,6 +48,19 @@ your seat. (Background tabs pause rendering, so drive one tab at a time.)
 - **Win.** Crew wins by ejecting the AI. The AI wins when crew alive ≤ 1 (or 0 in a
   2-player test game).
 
+## Admin twists (lobby settings, all off by default)
+
+- **Assigned kills** — the AI gets a secret, random kill order and sees *"your target, Name
+  Colour"*. The server decides who explodes: if the target is in reach it always dies, even
+  with another robot closer, so crowding can't be exploited. Killing anyone else — explosion
+  or sniper — ends the game for the crew. Targets that die another way are skipped.
+- **Anonymous deaths** — explosions and ashes are grey and reports just say "wreckage".
+- **Disguise into next round** — disguises survive meetings, and the voting roster, chat,
+  "called by" and ejections all use the identity each robot is *showing*. Red dressed as Pink
+  who kills Pink appears in the vote as Pink, with Red gone. Off: disguises drop at meetings.
+
+`bun run test` runs headless checks of these rules against the real lobby code.
+
 ## Voice
 
 - **Proximity voice** (default): WebRTC mesh, signalled over the game socket. Volume falls off

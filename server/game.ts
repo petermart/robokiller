@@ -84,6 +84,10 @@ export class Player {
   elevator = 0;
   meetingsLeft = 0;
   vote: string | null = null;
+  /** Assigned kills: the secret order the AI must follow (crew ids). */
+  killOrder: string[] = [];
+  /** Random tiebreak so two robots wearing one colour sit in no telling order. */
+  salt = 0;
 
   constructor(
     readonly id: string,
@@ -324,13 +328,18 @@ export class Lobby {
         return;
       case "kill": {
         if (!playing || p.role !== "impostor" || !p.alive || p.hidden || t < p.killReadyAt) return;
-        const v = this.players.get(m.target);
-        if (!v || v === p || !v.alive || v.hidden) return;
-        if (dist(p.x, p.z, v.x, v.z) > KILL_RANGE + 0.4) return;
+        const inReach = [...this.players.values()].filter(
+          (q) => q !== p && q.alive && !q.hidden && dist(p.x, p.z, q.x, q.z) <= KILL_RANGE + 0.4,
+        );
+        // The server chooses who explodes: with an assigned order, the right robot always
+        // goes if it's in reach, so standing beside two robots can't be gamed either way.
+        const target = this.settings.assignedKills ? this.currentTarget(p) : null;
+        const v = inReach.find((q) => q === target) ?? inReach.find((q) => q.id === m.target) ?? null;
+        if (!v) return;
         this.kill(v, "ash");
-        this.fx({ kind: "explode", x: v.x, z: v.z, c: v.color });
+        this.fx({ kind: "explode", x: v.x, z: v.z, c: this.deathColor(v) });
         p.killReadyAt = t + this.settings.killCooldown;
-        this.checkWin();
+        if (!this.checkOrder(p, v, target)) this.checkWin();
         return;
       }
       case "disguise": {
@@ -398,10 +407,11 @@ export class Lobby {
           !roomAt(v.x, v.z)?.safe &&
           !blocked(nest.x, nest.z, v.x, v.z);
         if (ok && v) {
+          const target = this.settings.assignedKills ? this.currentTarget(p) : null;
           this.kill(v, "ash");
           this.fx({ kind: "shot", nest: nest.id, x: v.x, z: v.z, hit: true });
-          this.fx({ kind: "explode", x: v.x, z: v.z, c: v.color });
-          this.checkWin();
+          this.fx({ kind: "explode", x: v.x, z: v.z, c: this.deathColor(v) });
+          if (!this.checkOrder(p, v, target)) this.checkWin();
         } else {
           this.fx({ kind: "shot", nest: nest.id, x: m.hx, z: m.hz, hit: false });
         }
@@ -411,7 +421,7 @@ export class Lobby {
         if (!playing || !p.alive || p.hidden) return;
         const b = this.bodies.find((b) => b.id === m.body);
         if (!b || dist(p.x, p.z, b.x, b.z) > REPORT_RANGE + 0.4) return;
-        this.startMeeting("body", p, b.c);
+        this.startMeeting("body", p, b.c >= 0 ? b.c : null);
         return;
       }
       case "reportSniper": {
@@ -441,7 +451,8 @@ export class Lobby {
       case "chat": {
         if (this.phase !== "meeting" || !p.alive) return;
         const text = String(m.text).slice(0, 200).trim();
-        if (text) this.broadcast({ t: "chat", from: p.id, text });
+        const who = this.identity(p);
+        if (text) this.broadcast({ t: "chat", from: p.id, text, name: who.name, c: who.color });
         return;
       }
       case "robo": {
@@ -509,6 +520,12 @@ export class Lobby {
       const sp = spawnPoint(i, ps.length);
       p.teleport(sp.x, sp.z);
     });
+    const crew = ps.filter((p) => p !== impostor).map((p) => p.id);
+    for (let i = crew.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [crew[i], crew[j]] = [crew[j]!, crew[i]!];
+    }
+    impostor.killOrder = crew;
     this.setPhase("reveal", REVEAL_SECONDS);
     for (const p of ps) {
       p.send({ t: "role", role: p.role, impostorColor: p.role === "impostor" ? p.color : null });
@@ -542,7 +559,7 @@ export class Lobby {
     v.alive = false;
     v.using = null;
     v.vote = null;
-    this.bodies.push({ id: `b${v.id}`, x: v.x, z: v.z, c: v.color, kind, at: now() });
+    this.bodies.push({ id: `b${v.id}`, x: v.x, z: v.z, c: this.deathColor(v), kind, at: now() });
     this.lobbyChanged();
   }
 
@@ -560,7 +577,11 @@ export class Lobby {
       p.using = null;
       p.vote = null;
       p.vent = p.nest = -1;
-      // Disguises survive meetings — with robo speech on, nobody can tell who swapped.
+      p.salt = Math.random();
+      if (!this.settings.disguiseCarry) {
+        p.displayColor = p.color; // disguises drop when the lights come up
+        p.disguiseUntil = 0;
+      }
       const sp = spawnPoint(i, everyone.length);
       p.teleport(sp.x, sp.z);
     });
@@ -569,10 +590,8 @@ export class Lobby {
   private endMeeting() {
     if (!this.meeting) return;
     const tally = new Map<string, number>();
-    const votes: Record<string, string> = {};
     for (const p of this.alive()) {
       const v = p.vote ?? "skip";
-      votes[p.id] = v;
       tally.set(v, (tally.get(v) ?? 0) + 1);
     }
     let top = "skip", topN = -1, tie = false;
@@ -584,18 +603,81 @@ export class Lobby {
       } else if (n === topN) tie = true;
     }
     const ejected = !tie && top !== "skip" ? this.players.get(top) ?? null : null;
+    // Results are told by the identity each robot was showing, never the real one.
+    const who = ejected ? this.identity(ejected) : null;
+    const tallyOut = [...tally].map(([k, n]) => {
+      const q = k === "skip" ? null : this.players.get(k);
+      const id = q ? this.identity(q) : null;
+      return { name: id?.name ?? "Skip", color: id?.color ?? null, n };
+    });
     if (ejected) ejected.alive = false;
     this.meeting = null;
     this.bodies = [];
     this.broadcast({
       t: "ejected",
       id: ejected?.id ?? null,
+      name: who?.name ?? null,
+      color: who?.color ?? null,
+      tally: tallyOut,
       wasImpostor: ejected && this.settings.confirmEjects ? ejected.role === "impostor" : null,
       tie,
-      votes,
     });
     this.setPhase("ejection", EJECTION_SECONDS);
     this.lobbyChanged();
+  }
+
+  // ---------------------------------------------------------------- identity & kill order
+
+  /** The colour a death shows: the victim's, or grey (-1) when deaths are anonymous. */
+  private deathColor(v: Player) {
+    return this.settings.anonymousDeaths ? -1 : v.color;
+  }
+
+  /** Who a robot appears to be: its displayed colour and that colour's owner's name. */
+  private identity(p: Player): { name: string; color: number } {
+    const owner = [...this.players.values()].find((q) => q.color === p.displayColor);
+    return { name: owner?.name ?? p.name, color: p.displayColor };
+  }
+
+  /**
+   * The voting roster. Living robots appear as whoever they're showing; any colour that
+   * no living robot is wearing appears as gone — so a disguised AI's own colour looks dead.
+   */
+  private roster() {
+    const all = [...this.players.values()];
+    const living = all.filter((p) => p.alive);
+    const cards = living.map((p) => ({ ...this.identity(p), id: p.id as string | null, alive: true, salt: p.salt }));
+    for (const q of all) {
+      if (living.some((p) => p.displayColor === q.color)) continue;
+      cards.push({ id: null, color: q.color, name: q.name, alive: false, salt: 0 });
+    }
+    return cards.sort((a, b) => a.color - b.color || a.salt - b.salt).map(({ salt, ...c }) => c);
+  }
+
+  /** Next robot the AI must kill: the first in its order still standing. */
+  private currentTarget(imp: Player): Player | null {
+    for (const id of imp.killOrder) {
+      const q = this.players.get(id);
+      if (q?.alive) return q;
+    }
+    return null;
+  }
+
+  private targetView(viewer: Player) {
+    if (!this.settings.assignedKills || viewer.role !== "impostor" || this.phase === "lobby") return null;
+    const q = this.currentTarget(viewer);
+    return q ? { id: q.id, name: q.name, color: q.color } : null;
+  }
+
+  /** Ends the game if an assigned-kills AI just killed out of order. Returns true if so. */
+  private checkOrder(imp: Player, victim: Player, target: Player | null): boolean {
+    if (!this.settings.assignedKills || !target || victim === target) return false;
+    this.gameOver(
+      "crew",
+      `The AI broke its kill order: it destroyed ${victim.name} when its target was ${target.name}.`,
+      imp,
+    );
+    return true;
   }
 
   private checkWin(): boolean {
@@ -677,7 +759,7 @@ export class Lobby {
         p.needs[i] = Math.max(0, p.needs[i]! - (100 / s.needDeadline) * dt);
         if (p.needs[i] === 0 && p.role === "crew") {
           this.kill(p, "husk");
-          this.fx({ kind: "shutdown", x: p.x, z: p.z, c: p.color });
+          this.fx({ kind: "shutdown", x: p.x, z: p.z, c: this.deathColor(p) });
           if (this.checkWin()) return;
           break;
         }
@@ -704,11 +786,16 @@ export class Lobby {
     const all = [...this.players.values()];
     const sniper = all.find((p) => p.nest >= 0 && p.alive)?.nest ?? -1;
     const bodies = this.bodies.map(({ at, ...b }) => b);
+    const callerP = this.meeting ? this.players.get(this.meeting.caller) : undefined;
+    const callerId = callerP ? this.identity(callerP) : { name: "?", color: 0 };
     const meeting = this.meeting
       ? {
           reason: this.meeting.reason,
           caller: this.meeting.caller,
+          callerName: callerId.name,
+          callerColor: callerId.color,
           bodyColor: this.meeting.bodyColor,
+          cards: this.roster(),
           voted: all.filter((p) => p.vote).map((p) => p.id),
           discussionLeft: Math.max(0, this.meeting.discussionEnds - t),
         }
@@ -756,6 +843,7 @@ export class Lobby {
         vent: viewer.vent,
         nest: viewer.nest,
         meetingsLeft: viewer.meetingsLeft,
+        target: this.targetView(viewer),
         x: viewer.x,
         z: viewer.z,
         tp: viewer.tp,

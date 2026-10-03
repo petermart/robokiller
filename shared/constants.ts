@@ -61,6 +61,12 @@ export interface Settings {
   sniperCooldown: number;
   disguiseDuration: number;
   disguiseCooldown: number;
+  /** The AI must kill the crew in a secret order; a wrong kill loses the game. */
+  assignedKills: boolean;
+  /** Ashes and explosions are grey: a report says "wreckage", not whose. */
+  anonymousDeaths: boolean;
+  /** Disguises survive meetings, and the voting roster shows disguised identities. */
+  disguiseCarry: boolean;
   discussionTime: number;
   votingTime: number;
   emergencyMeetings: number;
@@ -80,6 +86,9 @@ export const DEFAULT_SETTINGS: Settings = {
   sniperCooldown: 60,
   disguiseDuration: 0,
   disguiseCooldown: 30,
+  assignedKills: false,
+  anonymousDeaths: false,
+  disguiseCarry: false,
   discussionTime: 30,
   votingTime: 45,
   emergencyMeetings: 1,
@@ -114,6 +123,9 @@ export const SETTING_LABEL: Record<keyof Settings, string> = {
   sniperCooldown: "Sniper reload (s)",
   disguiseDuration: "Disguise duration (s, 0 = permanent)",
   disguiseCooldown: "Disguise cooldown (s)",
+  assignedKills: "Assigned kills (secret kill order)",
+  anonymousDeaths: "Anonymous deaths (grey ashes)",
+  disguiseCarry: "Disguise into next round",
   discussionTime: "Discussion time (s)",
   votingTime: "Voting time (s)",
   emergencyMeetings: "Emergency meetings each",

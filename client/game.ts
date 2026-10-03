@@ -46,6 +46,8 @@ type Overlay = "none" | "reveal" | "meeting" | "ejection" | "over" | "disguise" 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const colorName = (c: number) => COLORS[c]?.name ?? "?";
 const colorCss = (c: number) => COLORS[c]?.css ?? "#fff";
+/** Coloured colour name, e.g. <span style="color:red">Red</span>. */
+const colorTag = (c: number) => `<span style="color:${colorCss(c)}">${colorName(c)}</span>`;
 const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`);
 const swatch = (c: number) => `<span class="swatch" style="background:${colorCss(c)}"></span>`;
 
@@ -79,7 +81,7 @@ export class Game {
   private phase: Phase = "lobby";
   private action: { label: string; run: () => void } | null = null;
   private bubbles: { id: string; el: HTMLElement; until: number }[] = [];
-  private chatLog: { from: string; text: string; robo?: number }[] = [];
+  private chatLog: { from: string; text: string; robo?: number; name?: string; c?: number }[] = [];
   private lobbyPanelOpen = true;
   private time = 0;
   scope = 0;
@@ -318,6 +320,10 @@ export class Game {
   }
 
   private killTarget(): Robot | null {
+    // Mirrors the server: an assigned target in reach always wins over a closer robot.
+    const assigned = this.meView?.target?.id;
+    const t = assigned ? this.robots.get(assigned) : undefined;
+    if (t && !t.ghost && dist(this.x, this.z, t.target.x, t.target.z) < KILL_RANGE) return t;
     let best: Robot | null = null;
     let bd = KILL_RANGE;
     for (const r of this.robots.values()) {
@@ -355,7 +361,7 @@ export class Game {
         this.showOver(m);
         break;
       case "chat":
-        this.chatLog.push({ from: m.from, text: m.text });
+        this.chatLog.push({ from: m.from, text: m.text, name: m.name, c: m.c });
         this.renderChat();
         break;
       case "robo":
@@ -661,7 +667,10 @@ export class Game {
     const body = this.snap?.bodies.find((b) => dist(this.x, this.z, b.x, b.z) < REPORT_RANGE);
     if (body) {
       this.action = {
-        label: `E — Report ${colorName(body.c)}'s ${body.kind === "ash" ? "ashes" : "shell"}`,
+        label:
+          body.c < 0
+            ? `E — Report the wreckage`
+            : `E — Report ${colorName(body.c)}'s ${body.kind === "ash" ? "ashes" : "shell"}`,
         run: () => this.net.send({ t: "report", body: body.id }),
       };
       return;
@@ -783,7 +792,8 @@ export class Game {
         (me.alive ? "" : "<br>OFFLINE (ghost)") +
         (me.disguised
           ? `<br>disguised as ${colorName(me.displayColor)}${me.disguiseLeft > 0 ? ` ${Math.ceil(me.disguiseLeft)}s` : ""}`
-          : "");
+          : "") +
+        (me.target ? `<br>your target, ${esc(me.target.name)} ${colorTag(me.target.color)}` : "");
     } else tag.hidden = true;
 
     // prompt
@@ -809,7 +819,13 @@ export class Game {
     if (this.playing && me?.alive && this.role === "impostor" && !this.inNest && !this.inVent) {
       const target = this.killTarget();
       ab.innerHTML = [
-        this.abilityHtml("Q", "Explode", me.killCd, !!target, true),
+        this.abilityHtml(
+          "Q",
+          me.target && target && target.id !== me.target.id ? "WRONG ORDER" : "Explode",
+          me.killCd,
+          !!target,
+          true,
+        ),
         this.abilityHtml("F", me.disguised ? `As ${colorName(me.displayColor)}` : "Disguise", me.disguiseCd, true),
         this.abilityHtml("V", "Vent", 0, VENTS.some((v) => dist(this.x, this.z, v.x, v.z) < 1.4)),
         ELEVATORS.some((e) => dist(this.x, this.z, e.x, e.z) < 2.2)
@@ -1019,7 +1035,11 @@ export class Game {
         <h1 class="${imp ? "impostor" : "crew"}">${imp ? "YOU ARE THE<br>MAL-ALIGNED AI" : "YOU ARE CREW"}</h1>
         ${
           imp
-            ? `<p>Q explode a robot · F steal a colour · V crawl vents</p>
+            ? `${
+                this.settings?.assignedKills
+                  ? `<p class="impostor">ASSIGNED KILLS: destroy the crew in your secret order. One wrong kill and you lose.</p>`
+                  : ""
+              }<p>Q explode a robot · F steal a colour · V crawl vents</p>
                <p>E at an elevator: snipe from a distant tower</p>
                <p>Fake your needs at stations. Don't get voted out.</p>`
             : `<p>Keep your bars topped up at stations. Find the rogue AI.</p>
@@ -1081,7 +1101,6 @@ export class Game {
   private showMeeting() {
     const m = this.snap?.meeting;
     if (!m || !this.lobby) return;
-    const caller = this.lobby.players.find((p) => p.id === m.caller);
     const title =
       m.reason === "body"
         ? `WRECKAGE REPORTED${m.bodyColor !== null ? ` — ${colorName(m.bodyColor).toUpperCase()}` : ""}`
@@ -1091,7 +1110,7 @@ export class Game {
     this.setOverlay(
       "meeting",
       `<div class="meeting panel">
-        <header><div><h2>${title}</h2><div class="small">called by ${caller ? esc(caller.name) : "?"}</div></div>
+        <header><div><h2>${title}</h2><div class="small">called by ${esc(m.callerName)} ${colorTag(m.callerColor)}</div></div>
           <div class="timer" id="m-timer"></div></header>
         <div>
           <div class="cards" id="m-cards"></div>
@@ -1133,15 +1152,17 @@ export class Game {
     if (this.overlay !== "meeting" || !m || !this.lobby) return;
     const cards = $("m-cards");
     if (!cards) return;
-    cards.innerHTML = this.lobby.players
+    // The server's roster is by *shown* identity: with disguises carried into the meeting a
+    // colour can appear twice, and a disguised AI's own colour appears gone.
+    cards.innerHTML = m.cards
       .map(
-        (p) => `<button class="card ${p.alive ? "" : "dead"} ${m.voted.includes(p.id) ? "voted" : ""}
-          ${p.id === this.me ? "mine" : ""}" data-id="${p.id}" ${p.alive ? "" : "disabled"}>
-          ${swatch(p.color)}<span class="who">${esc(p.name)}<span class="tag">${colorName(p.color).toUpperCase()}</span></span>
+        (c) => `<button class="card ${c.alive ? "" : "dead"} ${c.id && m.voted.includes(c.id) ? "voted" : ""}
+          ${c.id === this.me ? "mine" : ""}" ${c.id ? `data-id="${c.id}"` : ""} ${c.alive && c.id ? "" : "disabled"}>
+          ${swatch(c.color)}<span class="who">${esc(c.name)}<span class="tag">${colorName(c.color).toUpperCase()}${c.alive ? "" : " · GONE"}</span></span>
         </button>`,
       )
       .join("");
-    cards.querySelectorAll<HTMLElement>(".card").forEach((c) =>
+    cards.querySelectorAll<HTMLElement>(".card[data-id]").forEach((c) =>
       c.addEventListener("click", () => this.vote(c.dataset.id!)),
     );
   }
@@ -1161,7 +1182,7 @@ export class Game {
       m.discussionLeft > 0
         ? `DISCUSS<br>${Math.ceil(m.discussionLeft)}s`
         : `VOTE NOW<br>${Math.ceil(s.timer)}s`;
-    const key = m.voted.join(",");
+    const key = m.voted.join(",") + "|" + m.cards.map((c) => `${c.id}:${c.color}:${c.alive}`).join(",");
     if (key !== this.votedKey) {
       this.votedKey = key;
       this.renderMeeting();
@@ -1176,7 +1197,7 @@ export class Game {
     $<HTMLButtonElement>("m-skip").disabled = !!this.myVote || !this.alive || m.discussionLeft > 0;
     // talking rings from raw voice level
     if (this.settings?.proximityVoice && !this.settings.roboSpeech) {
-      document.querySelectorAll<HTMLElement>("#m-cards .card").forEach((c) => {
+      document.querySelectorAll<HTMLElement>("#m-cards .card[data-id]").forEach((c) => {
         const id = c.dataset.id!;
         const lvl = id === this.me ? this.voice.micLevelNow() : this.voice.peerLevel(id);
         c.classList.toggle("talking", lvl > 0.03);
@@ -1193,9 +1214,8 @@ export class Game {
           // Robo speech is anonymous: show only the colour the speaker is wearing.
           return `<div><b style="color:${colorCss(c.robo)}">🤖 ${colorName(c.robo)}:</b> ${esc(c.text)}</div>`;
         }
-        const p = this.lobby!.players.find((p) => p.id === c.from);
-        const col = p ? colorCss(p.color) : "#fff";
-        return `<div><b style="color:${col}">${p ? esc(p.name) : "?"}:</b> ${esc(c.text)}</div>`;
+        // typed chat is labelled with the identity the speaker is showing
+        return `<div><b style="color:${colorCss(c.c ?? -1)}">${esc(c.name ?? "?")}:</b> ${esc(c.text)}</div>`;
       })
       .join("");
     log.scrollTop = log.scrollHeight;
@@ -1203,24 +1223,19 @@ export class Game {
 
   private showEjected(m: Extract<ServerMsg, { t: "ejected" }>) {
     this.myVote = null;
-    const p = this.lobby?.players.find((q) => q.id === m.id);
-    const tally: Record<string, number> = {};
-    for (const v of Object.values(m.votes)) tally[v] = (tally[v] ?? 0) + 1;
-    const tallyHtml = Object.entries(tally)
-      .map(([k, n]) => {
-        const q = this.lobby?.players.find((x) => x.id === k);
-        return `${q ? `${swatch(q.color)} ${esc(q.name)}` : "Skip"}: ${n}`;
-      })
+    const tallyHtml = m.tally
+      .map((t) => `${t.color !== null ? `${swatch(t.color)} ${esc(t.name)}` : "Skip"}: ${t.n}`)
       .join(" &nbsp; ");
     let line1 = "", line2 = "";
-    if (p) {
-      line1 = `${esc(p.name)} (${colorName(p.color)}) was dismantled.`;
+    if (m.id && m.name !== null && m.color !== null) {
+      const name = esc(m.name);
+      line1 = `${name} (${colorName(m.color)}) was dismantled.`;
       line2 =
         m.wasImpostor === null
           ? ""
           : m.wasImpostor
-            ? `<span class="crew">${esc(p.name)} WAS the mal-aligned AI.</span>`
-            : `<span class="impostor">${esc(p.name)} was not the AI.</span>`;
+            ? `<span class="crew">${name} WAS the mal-aligned AI.</span>`
+            : `<span class="impostor">${name} was not the AI.</span>`;
       sfx("boom", 0.6);
     } else {
       line1 = m.tie ? "Tied vote — nobody was dismantled." : "Skipped — nobody was dismantled.";
