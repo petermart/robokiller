@@ -26,13 +26,41 @@ function newCode(): string {
 }
 
 /**
- * STUN is enough for most home networks. Friends behind strict NATs need a TURN relay —
- * set TURN_URL / TURN_USERNAME / TURN_CREDENTIAL and it is handed to every client.
+ * Voice is peer-to-peer. STUN alone works when both routers allow a direct path; across
+ * many home networks it doesn't, and a TURN relay carries the audio instead. Two options:
+ *  - Cloudflare Realtime TURN: CF_TURN_KEY_ID + CF_TURN_API_TOKEN (short-lived creds minted here)
+ *  - any static TURN server:   TURN_URL (comma list) + TURN_USERNAME + TURN_CREDENTIAL
  */
-function iceServers() {
-  const list: RTCIceServer[] = [
-    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
-  ];
+const STUN: RTCIceServer = { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] };
+let cfCache: { servers: RTCIceServer[]; until: number } | null = null;
+
+async function cloudflareTurn(): Promise<RTCIceServer[]> {
+  const id = process.env.CF_TURN_KEY_ID, token = process.env.CF_TURN_API_TOKEN;
+  if (!id || !token) return [];
+  if (cfCache && Date.now() < cfCache.until) return cfCache.servers;
+  try {
+    const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${id}/credentials/generate-ice-servers`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ttl: 86400 }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const body = (await r.json()) as { iceServers: RTCIceServer | RTCIceServer[] };
+    // Browsers refuse port 53, which Cloudflare also lists; drop those URLs.
+    const servers = [body.iceServers].flat().map((s) => ({
+      ...s,
+      urls: [s.urls].flat().filter((u) => !/:53(\?|$)/.test(u)),
+    }));
+    cfCache = { servers, until: Date.now() + 12 * 3600_000 }; // creds live 24h; refresh at 12h
+    return servers;
+  } catch (e) {
+    console.error("[ice] Cloudflare TURN failed:", (e as Error).message);
+    return [];
+  }
+}
+
+async function iceServers(): Promise<RTCIceServer[]> {
+  const list: RTCIceServer[] = [STUN, ...(await cloudflareTurn())];
   if (process.env.TURN_URL) {
     list.push({
       urls: process.env.TURN_URL.split(","),
@@ -48,7 +76,7 @@ const server = Bun.serve<SocketData>({
   development: DEV ? { hmr: true, console: true } : false,
   routes: {
     "/": index,
-    "/api/ice": () => Response.json(iceServers()),
+    "/api/ice": async () => Response.json(await iceServers()),
     "/health": () => Response.json({ ok: true, lobbies: lobbies.size }),
   },
   fetch(req, srv) {

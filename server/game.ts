@@ -56,6 +56,7 @@ const rand = (a: number, b: number) => a + Math.random() * (b - a);
 export class Player {
   ws: Sock | null = null;
   connected = true;
+  mic = false;
   disconnectedAt = 0;
 
   x = 0;
@@ -243,6 +244,7 @@ export class Lobby {
       color: p.color,
       connected: p.connected,
       alive: p.alive,
+      mic: p.mic && p.connected,
     }));
     for (const p of this.players.values()) {
       p.send({
@@ -323,6 +325,12 @@ export class Lobby {
         p.moving = false;
         return;
       }
+      case "mic":
+        if (p.mic !== !!m.on) {
+          p.mic = !!m.on;
+          this.lobbyChanged();
+        }
+        return;
       case "cancelUse":
         p.using = null;
         return;

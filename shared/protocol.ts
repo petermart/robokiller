@@ -10,6 +10,7 @@ export type ClientMsg =
   | { t: "start" }
   | { t: "toLobby" }
   | { t: "leave" }
+  | { t: "mic"; on: boolean }
   | { t: "pos"; x: number; z: number; ry: number; moving: boolean }
   | { t: "use"; station: number }
   | { t: "cancelUse" }
@@ -37,6 +38,8 @@ export interface LobbyPlayer {
   color: number;
   connected: boolean;
   alive: boolean;
+  /** Is this robot actually sending microphone audio? */
+  mic: boolean;
 }
 
 export interface PlayerView {

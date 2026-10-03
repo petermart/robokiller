@@ -845,3 +845,23 @@ body.in-game #corner {
   font-size: 17px;
   color: var(--dim);
 }
+
+#lobby-players .mic {
+  font-size: 14px;
+}
+#lobby-players .mic.muted {
+  opacity: 0.5;
+}
+#lobby-players .link {
+  font-size: 14px;
+  color: var(--dim);
+}
+#lobby-players .link.ok {
+  color: #7dff6a;
+}
+#lobby-players .link.bad {
+  color: var(--hot);
+}
+#lobby-players .link.wait {
+  color: #ffd84a;
+}

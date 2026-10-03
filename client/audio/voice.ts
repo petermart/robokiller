@@ -30,13 +30,37 @@ export class Voice {
   muted = false;
   micError = "";
   private micLevel: AnalyserNode | null = null;
+  /** Resolves once the server's ICE list (incl. any TURN relay) has arrived. */
+  private iceReady: Promise<void>;
+  /** Signals are handled strictly in order, after ICE is ready, so none are dropped. */
+  private chain: Promise<void> = Promise.resolve();
+  private pending = new Set<string>();
+  hasRelay = false;
+  /** Called with a peer id when a connection gives up (usually: no TURN relay). */
+  onFailed: (id: string) => void = () => {};
+  /** Called whenever our outgoing mic state changes, so the server can show it. */
+  onMicState: (on: boolean) => void = () => {};
 
   constructor(private net: Net) {
-    fetch("/api/ice")
+    this.iceReady = fetch("/api/ice")
       .then((r) => r.json())
-      .then((list) => (this.ice = list))
+      .then((list: RTCIceServer[]) => {
+        this.ice = list;
+        this.hasRelay = list.some((s) => [s.urls].flat().some((u) => /^turns?:/.test(u)));
+      })
       .catch(() => {});
   }
+
+  /** What our side of the link to a peer looks like, for the lobby list. */
+  peerState(id: string): RTCPeerConnectionState | "none" {
+    return this.peers.get(id)?.pc.connectionState ?? (this.pending.has(id) ? "connecting" : "none");
+  }
+
+  get sendingMic() {
+    return !!this.outgoing();
+  }
+
+  private lastMicState: boolean | null = null;
 
   get micReady() {
     return !!this.micTrack;
@@ -78,6 +102,11 @@ export class Voice {
   }
 
   private applyTrack() {
+    const on = this.sendingMic;
+    if (on !== this.lastMicState) {
+      this.lastMicState = on;
+      this.onMicState(on);
+    }
     for (const p of this.peers.values()) {
       const tr = p.pc.getTransceivers()[0];
       if (tr) void tr.sender.replaceTrack(this.outgoing()).catch(() => {});
@@ -94,7 +123,7 @@ export class Voice {
     for (const id of [...this.peers.keys()]) if (!want.has(id)) this.close(id);
     for (const id of want) {
       // The lower id makes the offer; the other side waits for it.
-      if (!this.peers.has(id) && this.me < id) void this.call(id);
+      if (!this.peers.has(id) && !this.pending.has(id) && this.me < id) void this.call(id);
     }
   }
 
@@ -126,6 +155,7 @@ export class Voice {
     };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "failed") {
+        this.onFailed(id);
         this.close(id);
         if (this.me < id) setTimeout(() => void this.call(id), 1500);
       }
@@ -135,6 +165,10 @@ export class Voice {
   }
 
   private async call(id: string) {
+    this.pending.add(id);
+    await this.iceReady;
+    this.pending.delete(id);
+    if (this.peers.has(id)) return;
     const p = this.make(id);
     const tr = p.pc.addTransceiver("audio", { direction: "sendrecv" });
     await tr.sender.replaceTrack(this.outgoing());
@@ -147,7 +181,13 @@ export class Voice {
     this.net.send({ t: "rtc", to, data });
   }
 
-  async onSignal(from: string, data: Signal) {
+  onSignal(from: string, data: Signal) {
+    this.chain = this.chain.then(() => this.handleSignal(from, data));
+    return this.chain;
+  }
+
+  private async handleSignal(from: string, data: Signal) {
+    await this.iceReady;
     try {
       if (data.type === "offer") {
         if (this.peers.has(from)) this.close(from);

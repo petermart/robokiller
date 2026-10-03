@@ -114,6 +114,21 @@ export class Game {
     // Voice mixing runs on a timer, not the render loop: background tabs pause
     // requestAnimationFrame, and a tab that stops re-mixing keeps playing at its last volume.
     window.setInterval(() => this.active && this.updateVoiceMix(), 100);
+    // tell everyone whether we're actually sending audio
+    this.voice.onMicState = (on) => this.net.send({ t: "mic", on });
+    const failed = new Set<string>();
+    this.voice.onFailed = (id) => {
+      if (failed.has(id)) return;
+      failed.add(id);
+      const who = this.lobby?.players.find((p) => p.id === id)?.name ?? "a player";
+      this.toast(
+        this.voice.hasRelay
+          ? `Voice link to ${who} dropped — retrying…`
+          : `Can't reach ${who} for voice — your networks need a TURN relay (see README).`,
+      );
+    };
+    // connection states change on their own; keep the lobby list honest
+    window.setInterval(() => this.renderLobbyPlayers(), 1000);
   }
 
   // ================================================================== input
@@ -384,6 +399,13 @@ export class Game {
     this.lobby = m;
     this.me = m.you;
     if (first) {
+      if (m.settings.proximityVoice && !m.settings.roboSpeech && !this.voice.micReady) {
+        void this.voice.enableMic().then(() => {
+          if (this.voice.micError) this.toast(`Mic: ${this.voice.micError} — click MIC to retry`);
+          this.renderCorner();
+          this.renderLobby();
+        });
+      }
       this.active = true;
       document.body.classList.add("in-game");
       this.self.root.visible = true;
@@ -942,14 +964,7 @@ export class Game {
     if (!l || panel.hidden) return;
     const host = l.host === this.me;
     $("lobby-code").textContent = l.code;
-    $("lobby-players").innerHTML = l.players
-      .map(
-        (p) =>
-          `<li class="${p.connected ? "" : "off"}">${swatch(p.color)}<span>${esc(p.name)}</span>
-          ${p.id === l.host ? '<span class="small">HOST</span>' : ""}
-          ${p.id === this.me ? '<span class="small">YOU</span>' : ""}</li>`,
-      )
-      .join("");
+    this.renderLobbyPlayers();
     const mine = l.players.find((p) => p.id === this.me)?.color;
     const taken = new Set(l.players.map((p) => p.color));
     const picker = $("color-picker");
@@ -1010,6 +1025,32 @@ export class Game {
       const url = `${location.origin}/?code=${l.code}`;
       void navigator.clipboard.writeText(url).then(() => this.toast("Invite link copied"));
     };
+  }
+
+  /** Lobby roster with each robot's mic and our voice link to them. */
+  private renderLobbyPlayers() {
+    const l = this.lobby;
+    if (!l || $("lobby-panel").hidden) return;
+    const voiceOn = l.settings.proximityVoice && !l.settings.roboSpeech;
+    const link = (id: string) => {
+      const st = this.voice.peerState(id);
+      if (st === "connected") return '<span class="link ok" title="voice connected">●</span>';
+      if (st === "failed") return '<span class="link bad" title="voice could not connect">✕</span>';
+      if (st === "none" || st === "closed") return '<span class="link" title="no voice link">○</span>';
+      return '<span class="link wait" title="connecting">◌</span>';
+    };
+    const html = l.players
+      .map(
+        (p) =>
+          `<li class="${p.connected ? "" : "off"}">${swatch(p.color)}<span>${esc(p.name)}</span>
+          ${voiceOn ? `<span class="mic ${p.mic ? "" : "muted"}" title="${p.mic ? "mic on" : "no mic"}">${p.mic ? "🎙" : "🔇"}</span>` : ""}
+          ${voiceOn && p.id !== this.me && p.connected ? link(p.id) : ""}
+          ${p.id === l.host ? '<span class="small">HOST</span>' : ""}
+          ${p.id === this.me ? '<span class="small">YOU</span>' : ""}</li>`,
+      )
+      .join("");
+    const el = $("lobby-players");
+    if (el.innerHTML !== html) el.innerHTML = html;
   }
 
   // ================================================================== overlays
