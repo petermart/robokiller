@@ -184,8 +184,15 @@ export class TouchControls {
         ? { id: "mic", label: s.micOn ? "MIC ON" : "MIC OFF", key: "KeyT", enabled: true }
         : null;
 
+    const pose: Btn[] = s.canPose
+      ? [
+          { id: "jump", label: "JUMP", run: () => this.game.jump(), enabled: true },
+          { id: "crouch", label: s.crouching ? "STAND" : "CROUCH", run: () => this.game.toggleCrouch(), enabled: true, hot: s.crouching },
+        ]
+      : [];
     if (s.phase === "lobby") {
       out.push({ id: "panel", label: s.panelOpen ? "HIDE RULES" : "RULES", key: "Tab", enabled: true });
+      out.push(...pose);
       if (talk) out.push(talk);
       return out;
     }
@@ -218,6 +225,7 @@ export class TouchControls {
         out.push({ id: "disguise", label: "DISGUISE", key: "KeyF", enabled: s.disguiseCd <= 0, cd: s.disguiseCd });
         out.push({ id: "vent", label: "VENT", key: "KeyV", enabled: s.nearVent });
       }
+      out.push(...pose);
     }
     if (talk) out.push(talk);
     return out;

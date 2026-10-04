@@ -12,7 +12,7 @@ export type ClientMsg =
   | { t: "newMap" }
   | { t: "leave" }
   | { t: "mic"; on: boolean }
-  | { t: "pos"; x: number; z: number; ry: number; moving: boolean }
+  | { t: "pos"; x: number; z: number; ry: number; moving: boolean; crouch?: boolean; jumps?: number }
   | { t: "use"; station: number }
   | { t: "cancelUse" }
   | { t: "kill"; target: string }
@@ -52,6 +52,9 @@ export interface PlayerView {
   c: number;
   moving: boolean;
   using: boolean;
+  crouch: boolean;
+  /** Counts up with every jump; a change means "play a hop". */
+  jumps: number;
   /** Only ever true in the snapshot of dead players (ghosts see ghosts). */
   ghost: boolean;
 }

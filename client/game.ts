@@ -49,6 +49,8 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`
 /** Keyboard wording on desktop, on-screen button wording on phones. */
 const isTouchUI = matchMedia("(pointer: coarse)").matches;
 const kb = (desktop: string, touch: string) => (isTouchUI ? touch : desktop);
+/** Crouched robots walk at this fraction of full speed. */
+const CROUCH_SPEED = 0.5;
 /** Lines for the lobby's voice preview. */
 const PREVIEW_LINES = [
   "Take me to your leader.",
@@ -177,6 +179,8 @@ export class Game {
         this.toggleLobbyPanel();
         return;
       }
+      // Space jumps — never let it also "click" whichever button last had focus
+      if (e.code === "Space") e.preventDefault();
       if (e.repeat) {
         this.keys.add(e.code);
         return;
@@ -230,7 +234,7 @@ export class Game {
   private syncPos() {
     if (this.inVent || this.inNest || this.meView?.using) return;
     this.lastSend = performance.now();
-    this.net.send({ t: "pos", x: this.x, z: this.z, ry: this.ry, moving: false });
+    this.net.send({ t: "pos", x: this.x, z: this.z, ry: this.ry, moving: false, crouch: this.crouching, jumps: this.jumps });
   }
 
   // ---- entry points for touch controls (same actions as the keyboard) ----
@@ -308,6 +312,8 @@ export class Game {
       roboReady: this.robo.ready,
       roboLabel: this.robo.shortStatus,
       panelOpen: this.lobbyPanelOpen,
+      canPose: this.canPose(),
+      crouching: this.crouching,
     };
   }
 
@@ -357,6 +363,10 @@ export class Game {
       return;
     }
     if (this.overlay === "disguise" || this.overlay === "nest") return;
+    if (code === "Space" || code === "KeyC") {
+      if (this.canPose()) code === "Space" ? this.jump() : this.toggleCrouch();
+      return;
+    }
     if (!this.playing || !this.alive) return;
 
     if (this.inVent) {
@@ -387,6 +397,31 @@ export class Game {
         sfx("vent");
       } else this.toast("No vent here.");
     }
+  }
+
+  // ---------------------------------------------------------------- jump & crouch
+
+  private crouching = false;
+  private jumps = 0;
+  private lastJump = 0;
+  private sentPose = "";
+
+  /** Walking about as yourself — not in a vent, a tower, a meeting, or dead. */
+  private canPose() {
+    const live = this.phase === "lobby" || this.phase === "over" || (this.playing && this.alive);
+    return live && !this.inVent && !this.inNest && !this.meView?.using;
+  }
+
+  jump() {
+    if (!this.canPose() || this.time - this.lastJump < 0.6) return;
+    this.lastJump = this.time;
+    this.jumps++;
+    this.self.jump();
+  }
+
+  toggleCrouch() {
+    if (!this.canPose()) return;
+    this.crouching = !this.crouching;
   }
 
   async toggleMic() {
@@ -600,6 +635,9 @@ export class Game {
       r.targetRy = p.ry;
       r.moving = p.moving;
       r.using = p.using;
+      r.crouching = p.crouch;
+      if (r.root.userData.jumps !== undefined && p.jumps !== r.root.userData.jumps) r.jump();
+      r.root.userData.jumps = p.jumps;
       r.setColor(p.c);
       r.setGhost(p.ghost);
     }
@@ -725,7 +763,7 @@ export class Game {
     if (moving && me?.using) this.net.send({ t: "cancelUse" });
     if (moving && !me?.using) {
       const ghost = !this.alive && this.phase !== "lobby" && this.phase !== "over";
-      const sp = MOVE_SPEED * (ghost ? 1.4 : 1) * throttle * dt;
+      const sp = MOVE_SPEED * (ghost ? 1.4 : this.crouching ? CROUCH_SPEED : 1) * throttle * dt;
       let nx = this.x + (mx / len) * sp, nz = this.z + (mz / len) * sp;
       if (!ghost) ({ x: nx, z: nz } = this.map.collide(nx, nz, PLAYER_RADIUS));
       else {
@@ -740,14 +778,18 @@ export class Game {
     this.self.pos.set(this.x, 0, this.z);
     this.self.targetRy = this.ry;
     this.self.moving = moving;
+    if (!this.canPose()) this.crouching = false;
+    this.self.crouching = this.crouching;
     this.self.update(dt, true);
     this.self.root.visible = !this.inVent && !this.inNest;
 
     const t = performance.now();
-    if (canMove && t - this.lastSend > 50 && (moving || this.sentMoving)) {
+    const pose = `${this.crouching}|${this.jumps}`;
+    if (canMove && t - this.lastSend > 50 && (moving || this.sentMoving || pose !== this.sentPose)) {
       this.lastSend = t;
       this.sentMoving = moving;
-      this.net.send({ t: "pos", x: this.x, z: this.z, ry: this.ry, moving });
+      this.sentPose = pose;
+      this.net.send({ t: "pos", x: this.x, z: this.z, ry: this.ry, moving, crouch: this.crouching, jumps: this.jumps });
     } else if (canMove && !moving && me && t - this.lastSend > 300 && dist(me.x, me.z, this.x, this.z) > 0.25) {
       // Standing still but the server's copy of us is elsewhere (a late or clipped update):
       // keep nudging until it agrees, or range checks on the server fail mysteriously.
@@ -804,7 +846,7 @@ export class Game {
     } else {
       this.pitch = Math.max(-0.25, Math.min(1.15, this.pitch));
       cam.fov = 62;
-      const tx = this.self.pos.x, tz = this.self.pos.z, ty = 1.45;
+      const tx = this.self.pos.x, tz = this.self.pos.z, ty = 1.45 - 0.4 * this.self.crouchK + this.self.jumpH * 0.6;
       const boom = 4.2;
       const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
       // over the right shoulder, so the crosshair isn't hidden behind your own robot

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { Voice } from "../audio/voice.ts";
-import { thunder } from "../audio/background/ambience.ts";
+import { ambienceLevel, setAmbience, thunder } from "../audio/background/ambience.ts";
 import { musicOn, setMusic } from "../audio/background/music.ts";
 import { audio, unlockAudio } from "../audio/context.ts";
 import { Game } from "../game.ts";
@@ -215,6 +215,32 @@ $("music-btn").addEventListener("click", () => {
   game.renderCorner();
 });
 $("mic-btn").addEventListener("click", () => void game.toggleMic());
+
+// ☂ — rain & storm volume, per player
+const ambPop = $("ambience-pop");
+const ambRange = $("ambience-range") as HTMLInputElement;
+const showAmbience = () => {
+  const pct = Math.round(ambienceLevel * 100);
+  ambRange.value = String(pct);
+  $("ambience-val").textContent = pct ? `${pct}%` : "off";
+  $("ambience-btn").classList.toggle("off", ambienceLevel === 0);
+};
+showAmbience();
+$("ambience-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  unlockAudio();
+  ambPop.hidden = !ambPop.hidden;
+  if (!ambPop.hidden) document.exitPointerLock?.();
+});
+ambRange.addEventListener("input", () => {
+  unlockAudio();
+  setAmbience(Number(ambRange.value) / 100);
+  showAmbience();
+});
+// clicking anywhere else closes it
+document.addEventListener("pointerdown", (e) => {
+  if (!ambPop.hidden && !(e.target as Element).closest?.("#ambience-pop, #ambience-btn")) ambPop.hidden = true;
+});
 const leave = () => {
   net.rejoin = null;
   net.send({ t: "leave" });

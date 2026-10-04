@@ -22,13 +22,14 @@ your seat. (Background tabs pause rendering, so drive one tab at a time.)
 |---|---|---|
 | WASD / mouse | move / look (click the view to capture the mouse) | same |
 | E | refill a need at a station · report wreckage · emergency button | + take an elevator to a sniper nest |
+| Space / C | jump · crouch (toggle; half speed, and low furniture hides you from the sniper) | same |
 | Click | report a sniper you spot in a distant window | shoot (in a nest) |
 | Q | — | explode a robot in reach |
 | F | — | steal any robot's colour (alive or dead) — permanent until you swap |
 | V / A / D | — | enter vent · crawl to next vent · climb out |
 | X | — | leave the sniper nest |
 | T | mic on/off · or **hold to talk** when robo speech is on | same |
-| M | music on/off | same |
+| M | music on/off (☂ next to it sets the rain & storm volume) | same |
 | Tab | hide/show the lobby panel | same |
 
 ### On a phone
@@ -39,7 +40,7 @@ landscape on the first tap). Multitouch twin-stick:
 - **Left thumb** — floating joystick wherever you touch the left side; analog speed.
 - **Right thumb** — drag to look; a quick **tap** = a desktop click (spot a sniper at the crosshair).
 - **Buttons** follow what you can do: USE/REPORT, EXPLODE/DISGUISE/VENT for the AI,
-  ◀ ▶ CLIMB OUT in vents, FIRE/ZOOM/EXIT in a nest, MIC or HOLD TALK, and RULES in the lobby.
+  ◀ ▶ CLIMB OUT in vents, FIRE/ZOOM/EXIT in a nest, MIC or HOLD TALK, JUMP/CROUCH, and RULES in the lobby.
 
 ## How it plays
 

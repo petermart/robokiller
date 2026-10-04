@@ -717,6 +717,34 @@ body.in-game #corner {
   padding: 4px 8px;
   font-size: 16px;
 }
+#ambience-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #0c0a12;
+  border: 2px solid #5a4a60;
+  white-space: nowrap;
+  font-size: 12px;
+}
+#ambience-pop[hidden] {
+  display: none;
+}
+/* desktop in-game the corner sits low, so open upwards */
+body.in-game:not(.touch) #ambience-pop {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+#ambience-range {
+  width: 120px;
+}
+#ambience-val {
+  min-width: 3.5em;
+  text-align: right;
+}
 #corner button.off {
   opacity: 0.45;
   text-decoration: line-through;

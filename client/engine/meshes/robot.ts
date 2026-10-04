@@ -7,6 +7,9 @@ const DARK = 0x1b1c26;
 const METAL = 0x6c7183;
 
 /** A small boxy robot with big glowing eyes. Front is local +z. */
+const JUMP_TIME = 0.5;
+const JUMP_HEIGHT = 0.55;
+
 export class Robot {
   root = new THREE.Group();
   /** Everything that bobs (excludes the ground shadow). */
@@ -39,6 +42,12 @@ export class Robot {
   ry = 0;
   moving = false;
   using = false;
+  crouching = false;
+  /** Smoothed crouch amount, 0 standing … 1 fully crouched. */
+  crouchK = 0;
+  /** Current jump height above the floor. */
+  jumpH = 0;
+  private jumpT = -1;
   /** Picking proxy for the sniper's raycast. */
   hitbox: THREE.Mesh;
 
@@ -225,6 +234,11 @@ export class Robot {
     this.talkTarget.bright = bright;
   }
 
+  /** Hop. Ignored while already in the air. */
+  jump() {
+    if (this.jumpT < 0) this.jumpT = 0;
+  }
+
   snap(x: number, z: number, ry: number) {
     this.pos.set(x, 0, z);
     this.target.set(x, 0, z);
@@ -266,7 +280,21 @@ export class Robot {
       : walking
         ? Math.abs(Math.sin(this.walk)) * 0.06
         : Math.sin(this.t * 2.2) * 0.015;
-    this.rig.position.y = bob;
+    // crouch: squash down and lean in; jump: a quick parabola
+    this.crouchK += ((this.crouching && !this.ghost ? 1 : 0) - this.crouchK) * Math.min(1, dt * 14);
+    if (this.jumpT >= 0) {
+      this.jumpT += dt;
+      const p = this.jumpT / JUMP_TIME;
+      this.jumpH = p < 1 ? 4 * JUMP_HEIGHT * p * (1 - p) : 0;
+      if (p >= 1) this.jumpT = -1;
+    }
+    const squash = 1 - 0.32 * this.crouchK;
+    this.rig.scale.set(1 + 0.08 * this.crouchK, squash, 1 + 0.08 * this.crouchK);
+    this.rig.rotation.x = 0.12 * this.crouchK;
+    this.rig.position.y = bob * squash + this.jumpH;
+    this.hitbox.scale.y = squash;
+    this.hitbox.position.y = 0.85 * squash + this.jumpH;
+    this.shadow.scale.setScalar(1 - Math.min(0.5, this.jumpH));
     this.head.rotation.z = Math.sin(this.t * 1.3) * (walking ? 0.03 : 0.06);
     this.head.rotation.x = this.using ? 0.25 : 0;
     this.antenna.rotation.z = Math.sin(this.t * 6) * (walking ? 0.25 : 0.08);

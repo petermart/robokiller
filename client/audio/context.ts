@@ -1,11 +1,12 @@
 // The shared AudioContext and mixer. All game audio is synthesized here in the browser —
-// nothing is downloaded. Busses: music (background/music.ts), sfx (sfx/ and thunder),
-// and master, which the rain hiss and the voice chat sit beside.
+// nothing is downloaded. Busses: music (background/music.ts), sfx (sfx/), ambience (rain
+// and thunder, background/ambience.ts), and master, which the voice chat sits beside.
 
 let ctx: AudioContext | null = null;
 let master: GainNode;
 let musicBus: GainNode;
 let sfxBus: GainNode;
+let ambienceBus: GainNode;
 let noiseBuf: AudioBuffer;
 let brownBuf: AudioBuffer;
 const readyHooks: (() => void)[] = [];
@@ -28,6 +29,9 @@ export function audio(): AudioContext {
   sfxBus = ctx.createGain();
   sfxBus.gain.value = 0.5;
   sfxBus.connect(master);
+  ambienceBus = ctx.createGain();
+  ambienceBus.gain.value = 0; // background/ambience.ts sets it from the player's preference
+  ambienceBus.connect(master);
 
   const len = ctx.sampleRate * 2;
   noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -51,7 +55,7 @@ export function unlockAudio() {
 
 export function buses() {
   audio();
-  return { master, music: musicBus, sfx: sfxBus };
+  return { master, music: musicBus, sfx: sfxBus, ambience: ambienceBus };
 }
 
 /** Two seconds of white noise (hiss, hats, crunch) and brown noise (rumble). */

@@ -15,6 +15,9 @@ import {
   type Role,
   type Settings,
 } from "../shared/constants.ts";
+
+/** Anything at least this tall hides a crouching robot from the sniper. */
+const CROUCH_COVER_H = 0.7;
 import {
   BUTTON,
   dist,
@@ -66,6 +69,8 @@ export class Player {
   z = 0;
   ry = 0;
   moving = false;
+  crouch = false;
+  jumps = 0;
   lastPosAt = now();
   /** Metres this robot may still move: refills at walking speed, spent by position updates. */
   moveBudget = MOVE_BUDGET_CAP;
@@ -152,6 +157,7 @@ export class Lobby {
 
   /** Rebuild the map after a settings change or reroll, and put everyone somewhere safe. */
   private remap() {
+    for (const p of this.players.values()) p.crouch = false;
     const next = generateMap(this.mapOptions());
     if (next.key === this.map.key) return;
     this.map = next;
@@ -365,6 +371,8 @@ export class Lobby {
         p.z = nz;
         p.ry = m.ry;
         p.moving = m.moving;
+        p.crouch = !!m.crouch;
+        if (Number.isFinite(m.jumps)) p.jumps = m.jumps! | 0;
         return;
       }
       case "use": {
@@ -466,7 +474,8 @@ export class Lobby {
           v.alive &&
           !v.hidden &&
           !this.map.roomAt(v.x, v.z)?.safe &&
-          !this.map.blocked(nest.x, nest.z, v.x, v.z);
+          // crouched robots hide behind low furniture too (couches, crates, desks)
+          !this.map.blocked(nest.x, nest.z, v.x, v.z, v.crouch ? CROUCH_COVER_H : undefined);
         if (ok && v) {
           const target = this.settings.assignedKills ? this.currentTarget(p) : null;
           this.kill(v, "ash");
@@ -890,6 +899,8 @@ export class Lobby {
           c: this.greyLobby ? -1 : q.displayColor,
           moving: q.moving,
           using: !!q.using,
+          crouch: q.crouch,
+          jumps: q.jumps,
           ghost: !open && !q.alive,
         });
       }
