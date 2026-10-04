@@ -6,6 +6,7 @@ import { audio, unlockAudio } from "../audio/context.ts";
 import { Game } from "../game.ts";
 import { Net, sessionToken } from "./net.ts";
 import { Post } from "../engine/post.ts";
+import { SniperPreview } from "../engine/preview.ts";
 import { VoxelTitle } from "../engine/title.ts";
 import { NO_INK } from "../engine/toon.ts";
 import { World } from "../engine/world/index.ts";
@@ -41,6 +42,7 @@ world.onThunder = (delay, power) => {
 const post = new Post(renderer, world.scene, camera);
 
 const perf = new PerfWatch(renderer, post);
+const preview = new SniperPreview(renderer, world);
 const title = new VoxelTitle();
 title.group.position.set(0, 6.2, 24);
 world.scene.add(title.group);
@@ -249,6 +251,8 @@ function frame() {
     camera.lookAt(0, 3.2, 14);
     camera.updateProjectionMatrix();
   }
+  const pip = game.sniperPreview;
+  if (pip) preview.render(pip.canvas, pip.nest);
   post.render(t, flash, game.scope);
   perf.tick(dt);
   requestAnimationFrame(frame);

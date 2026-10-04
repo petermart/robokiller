@@ -1251,8 +1251,25 @@ body.touch #prompt {
   background: #0c0a12;
   border: 2px solid #3a3040;
 }
-#new-map {
+#new-map,
+#sniper-preview {
   width: 100%;
+}
+.fog-grid {
+  margin: 10px 0 8px;
+}
+#sniper-pip {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin-top: 8px;
+  background: #0c0a12;
+  border: 2px solid #ff3a5a;
+  cursor: pointer;
+}
+.pip-caption {
+  margin-top: 4px;
+  opacity: 0.8;
 }
 .mapview {
   display: block;

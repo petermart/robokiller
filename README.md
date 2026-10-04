@@ -81,6 +81,13 @@ defaults reproduce the original hand-made map exactly.
 - **Sniper towers** 1–8 — north, east, south, then west and the diagonals. The AI picks one on
   a top-down map with every tower placed in its real direction.
 - **🎲 New layout** rerolls the extra furniture.
+- **Fog inside / Fog for the sniper** Off → Haze → Light → Medium → Thick → Dense → Soup, set
+  separately. Inside, Soup leaves about 7 m of sight; the sniper's fog is tuned to the 40–90 m
+  from the towers. Through any fog the sniper still sees the building's window frames, and
+  everyone still sees a sniper's lit window, silhouette and glint. Ink outlines fade with the
+  fog so it can't be seen through. Purely visual: every client renders it from the settings.
+- **🔭 Sniper preview** shows the view from a tower with the sniper's fog, live, in the
+  panel. Click it to step through the towers.
 
 The map preview in the lobby updates live. `bun scripts/test-maps.ts` flood-fills dozens of
 option combinations to prove every station, vent and elevator stays reachable.

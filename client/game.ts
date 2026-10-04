@@ -11,6 +11,9 @@ import {
   PLAYER_RADIUS,
   REPORT_RANGE,
   MAP_SETTING_LABEL,
+  FOG_LEVELS,
+  FOG_SETTING_LABEL,
+  type FogSettingKey,
   SETTING_LABEL,
   type MapSettingKey,
   SETTING_LIMITS,
@@ -530,6 +533,7 @@ export class Game {
     this.voice.setSending(m.settings.proximityVoice && !m.settings.roboSpeech);
     // same options + seed as the server → the same map; rebuild the level if it changed
     const s = m.settings;
+    this.world.fog = { inside: s.fogInside ?? 0, sniper: s.fogSniper ?? 0 };
     const next = generateMap({
       size: s.mapSize,
       roomSize: s.mapRoomSize,
@@ -767,6 +771,7 @@ export class Game {
   private updateCamera(dt: number) {
     const cam = this.camera;
     const me = this.meView;
+    this.world.setFogView(me && me.nest >= 0 && this.phase === "playing" ? "sniper" : "inside");
     this.scope = 0;
     if (this.phase === "meeting" || this.phase === "ejection") {
       cam.fov = 55;
@@ -1360,6 +1365,17 @@ export class Game {
     );
   }
 
+  private previewOn = false;
+  private previewNest = 0;
+
+  /** The lobby's sniper preview canvas and tower, while it's open and on screen. */
+  get sniperPreview(): { canvas: HTMLCanvasElement; nest: number } | null {
+    if (!this.previewOn || this.phase !== "lobby") return null;
+    const canvas = document.getElementById("sniper-pip") as HTMLCanvasElement | null;
+    if (!canvas || !canvas.offsetParent) return null;
+    return { canvas, nest: this.previewNest };
+  }
+
   /** The lobby's Map section: size, rooms, furniture, towers, reroll, and a live preview. */
   private renderMapOptions(host: boolean) {
     const l = this.lobby!;
@@ -1386,10 +1402,39 @@ export class Game {
         return `<label>${MAP_SETTING_LABEL[k]}${note}</label>${input}`;
       })
       .join("");
+    const fog = (Object.keys(FOG_SETTING_LABEL) as FogSettingKey[])
+      .map((k) => {
+        const v = l.settings[k] ?? 0;
+        const opts = FOG_LEVELS.map((name, i) => `<option value="${i}" ${i === v ? "selected" : ""}>${name}</option>`).join("");
+        return `<label>${FOG_SETTING_LABEL[k]}</label><select data-k="${k}" ${dis}>${opts}</select>`;
+      })
+      .join("");
     const { svg } = mapSvg(this.map, { towers: true });
+    if (this.previewNest >= this.map.nests.length) this.previewNest = 0;
+    const pn = this.map.nests[this.previewNest];
     box.innerHTML = `<div class="map-grid">${inputs}</div>
       <div class="map-preview">${svg}</div>
-      ${host ? `<button id="new-map">🎲 New layout</button>` : ""}`;
+      ${host ? `<button id="new-map">🎲 New layout</button>` : ""}
+      <div class="map-grid fog-grid">${fog}</div>
+      <button id="sniper-preview">${this.previewOn ? "✕ Close sniper preview" : "🔭 Sniper preview"}</button>
+      ${
+        this.previewOn && pn
+          ? `<canvas id="sniper-pip" title="Click for the next tower"></canvas>
+             <div class="small pip-caption">${towerLabel(pn).toUpperCase()} TOWER — the sniper's fog${
+               this.map.nests.length > 1 ? ` · ${kb("click", "tap")} for the next tower` : ""
+             }</div>`
+          : ""
+      }`;
+    $("sniper-preview").addEventListener("click", () => {
+      this.previewOn = !this.previewOn;
+      (document.activeElement as HTMLElement | null)?.blur(); // re-render skips a focused panel
+      this.renderMapOptions(host);
+    });
+    document.getElementById("sniper-pip")?.addEventListener("click", () => {
+      this.previewNest = (this.previewNest + 1) % this.map.nests.length;
+      (document.activeElement as HTMLElement | null)?.blur();
+      this.renderMapOptions(host);
+    });
     box.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-k]").forEach((inp) =>
       inp.addEventListener("change", () => {
         this.net.send({ t: "settings", settings: { [inp.dataset.k!]: Number(inp.value) } });

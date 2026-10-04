@@ -87,6 +87,7 @@ export class Post {
     u.flash!.value = flash;
     u.time!.value = time;
     u.scope!.value = scope;
+    u.fogDensity!.value = (scene.fog as THREE.FogExp2 | null)?.density ?? 0;
     this.composer.render();
   }
 }

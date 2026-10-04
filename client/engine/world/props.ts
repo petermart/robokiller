@@ -3,9 +3,18 @@
 
 import * as THREE from "three";
 import type { Rect } from "../../../shared/world/index.ts";
-import { glow, noInk, toon } from "../toon.ts";
+import { glow, noInk, toon, toonUnique } from "../toon.ts";
 
 const WALL = 0x8d93a6;
+
+/**
+ * The outer glass and its frames. In the sniper's view these ignore the fog, so the
+ * building's windows always read through it (see World.setFogView).
+ */
+export const WINDOW_MATS = {
+  glass: new THREE.MeshBasicMaterial({ color: 0x9fd6ff, transparent: true, opacity: 0.1, depthWrite: false }),
+  frame: toonUnique(0x2a2c36),
+};
 
 /** The 3D look of one collision rectangle, or null for things built elsewhere. */
 export function propMesh(r: Rect): THREE.Object3D | null {
@@ -30,7 +39,7 @@ export function propMesh(r: Rect): THREE.Object3D | null {
     case "glass": {
       const glass = add(
         new THREE.BoxGeometry(w, h, d),
-        new THREE.MeshBasicMaterial({ color: 0x9fd6ff, transparent: true, opacity: 0.1, depthWrite: false }),
+        WINDOW_MATS.glass,
         0,
         h / 2,
       );
@@ -42,7 +51,7 @@ export function propMesh(r: Rect): THREE.Object3D | null {
         const o = -long / 2 + (i * long) / n;
         add(
           new THREE.BoxGeometry(w > d ? 0.12 : 0.2, h, w > d ? 0.2 : 0.12),
-          toon(0x2a2c36),
+          WINDOW_MATS.frame,
           w > d ? o : 0,
           h / 2,
           w > d ? 0 : o,

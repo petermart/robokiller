@@ -16,6 +16,7 @@ export const InkShader = {
     flash: { value: 0 },
     time: { value: 0 },
     scope: { value: 0 },
+    fogDensity: { value: 0 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -27,7 +28,7 @@ export const InkShader = {
     uniform sampler2D tNormal;
     uniform sampler2D tDepth;
     uniform vec2 resolution;
-    uniform float cameraNear, cameraFar, thickness, flash, time, scope;
+    uniform float cameraNear, cameraFar, thickness, flash, time, scope, fogDensity;
     varying vec2 vUv;
 
     float lin(vec2 uv) {
@@ -64,6 +65,9 @@ export const InkShader = {
         ink = max(depthEdge, normalEdge);
         // Lines thin out into the smog so the far city stays painterly.
         ink *= 1.0 - smoothstep(30.0, 140.0, d);
+        // ...and into thick fog, same falloff as the scene's FogExp2
+        float fd = fogDensity * d;
+        ink *= exp(-fd * fd);
       }
       col.rgb = mix(col.rgb, vec3(0.02, 0.015, 0.03), ink * 0.92);
 

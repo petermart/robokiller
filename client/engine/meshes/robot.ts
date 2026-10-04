@@ -42,6 +42,23 @@ export class Robot {
   /** Picking proxy for the sniper's raycast. */
   hitbox: THREE.Mesh;
 
+  /** Never fade into fog — for the sniper's silhouette, which must always read. */
+  noFog() {
+    this.root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh && !(o as THREE.Points).isPoints) return;
+      const mat = m.material as THREE.Material & { fog?: boolean };
+      if (mat === this.bodyMat || mat === this.headMat) mat.fog = false;
+      else {
+        // most parts share cached materials with every other robot — give this one its own
+        const own = mat.clone() as THREE.Material & { fog?: boolean };
+        own.fog = false;
+        m.material = own;
+      }
+    });
+    return this;
+  }
+
   constructor(color: number, readonly id = "") {
     this.bodyMat = toonUnique(0xffffff);
     this.headMat = toonUnique(0xffffff);

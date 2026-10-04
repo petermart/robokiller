@@ -12,7 +12,7 @@ import { ventMesh } from "../meshes/vent.ts";
 import { glow, noInk, toon } from "../toon.ts";
 import { buildCity, buildOwnTower } from "./city.ts";
 import { SniperNests } from "./nests.ts";
-import { propMesh } from "./props.ts";
+import { propMesh, WINDOW_MATS } from "./props.ts";
 import { Boardroom } from "./rooms/boardroom.ts";
 import { buildChargingBay } from "./rooms/charging-bay.ts";
 import { buildGarage } from "./rooms/garage.ts";
@@ -22,6 +22,13 @@ import { buildTaskRoom } from "./rooms/task-room.ts";
 import { Weather } from "./weather.ts";
 
 const SMOG = 0x6a4630;
+/** The storm's own smog — always there, thin enough to see across the floor. */
+const BASE_FOG = 0.0115;
+// FogExp2 is ~90% opaque at 1.52 / density metres. Inside levels aim that at 40 → 7 m;
+// sniper levels at 110 → 44 m (the towers are ~40 m from the glass, 55-90 m from the middle).
+const INSIDE_FOG = [0, 1.52 / 40, 1.52 / 28, 1.52 / 20, 1.52 / 14, 1.52 / 10, 1.52 / 7];
+const SNIPER_FOG = [0, 1.52 / 110, 1.52 / 90, 1.52 / 75, 1.52 / 62, 1.52 / 52, 1.52 / 44];
+export type FogView = "inside" | "sniper";
 
 /** Each main room's look; corner closets (and anything new) use the shared task-room shell. */
 const ROOM_LOOKS: Record<string, (scene: THREE.Object3D, room: WorldMap["rooms"][number]) => void> = {
@@ -48,12 +55,15 @@ export class World {
   private boardroom!: Boardroom;
   private weather!: Weather;
   private thunder: (delay: number, power: number) => void = () => {};
+  /** Lobby fog levels (indexes into FOG_LEVELS). */
+  fog = { inside: 0, sniper: 0 };
+  private fogView: FogView = "inside";
   private time = 0;
 
   constructor() {
     const s = this.scene;
     s.background = new THREE.Color(SMOG);
-    s.fog = new THREE.FogExp2(SMOG, 0.0115);
+    s.fog = new THREE.FogExp2(SMOG, BASE_FOG);
 
     this.hemi = new THREE.HemisphereLight(0xffc89a, 0x203048, 1.2);
     s.add(this.hemi);
@@ -170,6 +180,26 @@ export class World {
       const l = new THREE.PointLight(0xffd2a0, 6, 14, 1.4);
       l.position.set(x! * sx, 2.9, z! * sz);
       L.add(l);
+    }
+  }
+
+  /**
+   * Set the fog for whoever is looking: inside the building, or down a sniper scope.
+   * The sniper's view keeps the building's windows clear of fog so there's always
+   * something to aim at.
+   */
+  get currentFogView() {
+    return this.fogView;
+  }
+
+  setFogView(view: FogView) {
+    const lv = view === "sniper" ? SNIPER_FOG[this.fog.sniper] : INSIDE_FOG[this.fog.inside];
+    (this.scene.fog as THREE.FogExp2).density = Math.max(BASE_FOG, lv ?? 0);
+    if (view === this.fogView) return;
+    this.fogView = view;
+    for (const m of Object.values(WINDOW_MATS)) {
+      m.fog = view !== "sniper";
+      m.needsUpdate = true;
     }
   }
 

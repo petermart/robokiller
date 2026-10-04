@@ -34,7 +34,8 @@ export class SniperNests {
       // BackSide box = an open window seen from outside: only the far walls render
       const recess = new THREE.Mesh(
         new THREE.BoxGeometry(toFloor.x ? depth : 3, 2.4, toFloor.z ? depth : 3),
-        new THREE.MeshBasicMaterial({ color: 0xe0813a, side: THREE.BackSide }),
+        // the lit window always shows through fog, so a silhouette in it always reads
+        new THREE.MeshBasicMaterial({ color: 0xe0813a, side: THREE.BackSide, fog: false }),
       );
       recess.position.set(n.x - toFloor.x * (0.05 + depth / 2), 1.25, n.z - toFloor.z * (0.05 + depth / 2));
       scene.add(noInk(recess));
@@ -43,7 +44,7 @@ export class SniperNests {
       scene.add(lamp);
 
       // silhouette — only visible while a sniper is in this nest
-      const r = new Robot(6);
+      const r = new Robot(6).noFog();
       r.snap(n.x - toFloor.x * 0.6, n.z - toFloor.z * 0.6, Math.atan2(toFloor.x, toFloor.z));
       r.root.position.y = 0.1;
       r.root.visible = false;
@@ -51,7 +52,9 @@ export class SniperNests {
       scene.add(r.root);
       this.snipers.push(r);
 
-      const glint = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), glow(0xff3020));
+      const glintMat = glow(0xff3020);
+      glintMat.fog = false;
+      const glint = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), glintMat);
       glint.position.set(n.x + toFloor.x * 0.3, n.y, n.z + toFloor.z * 0.3);
       glint.visible = false;
       scene.add(noInk(glint));

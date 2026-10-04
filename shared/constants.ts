@@ -87,11 +87,20 @@ export interface Settings {
   mapProps: number;
   /** Map: sniper towers around the building. */
   mapTowers: number;
+  /** Extra fog inside the building, 0 = off … FOG_LEVELS.length - 1. */
+  fogInside: number;
+  /** Extra fog in the sniper's scope (between the towers and the building). */
+  fogSniper: number;
 }
 
 /** The settings that shape the map (shown in their own "Map" section, above Rules). */
 export const MAP_SETTING_KEYS = ["mapSize", "mapRoomSize", "mapRooms", "mapProps", "mapTowers"] as const;
 export type MapSettingKey = (typeof MAP_SETTING_KEYS)[number];
+
+/** Fog settings — shown under the map with the sniper preview. Purely visual (client-side). */
+export const FOG_SETTING_KEYS = ["fogInside", "fogSniper"] as const;
+export type FogSettingKey = (typeof FOG_SETTING_KEYS)[number];
+export const FOG_LEVELS = ["Off", "Haze", "Light", "Medium", "Thick", "Dense", "Soup"] as const;
 
 export const DEFAULT_SETTINGS: Settings = {
   taskDuration: 5,
@@ -118,6 +127,8 @@ export const DEFAULT_SETTINGS: Settings = {
   mapRooms: 4,
   mapProps: 1,
   mapTowers: 3,
+  fogInside: 0,
+  fogSniper: 0,
 };
 
 /** Clamp ranges for host-editable numeric settings — the server enforces these. */
@@ -139,9 +150,11 @@ export const SETTING_LIMITS: Partial<Record<keyof Settings, [number, number, num
   mapRooms: [4, 16, 1],
   mapProps: [0, 5, 1],
   mapTowers: [1, 8, 1],
+  fogInside: [0, 6, 1],
+  fogSniper: [0, 6, 1],
 };
 
-export const SETTING_LABEL: Record<Exclude<keyof Settings, MapSettingKey>, string> = {
+export const SETTING_LABEL: Record<Exclude<keyof Settings, MapSettingKey | FogSettingKey>, string> = {
   taskDuration: "Task duration (s)",
   needIntervalMin: "Need interval — low (s)",
   needIntervalMax: "Need interval — high (s)",
@@ -169,6 +182,11 @@ export const MAP_SETTING_LABEL: Record<MapSettingKey, string> = {
   mapRooms: "Task rooms",
   mapProps: "Furniture",
   mapTowers: "Sniper towers",
+};
+
+export const FOG_SETTING_LABEL: Record<FogSettingKey, string> = {
+  fogInside: "Fog inside",
+  fogSniper: "Fog for the sniper",
 };
 
 export type Phase = "lobby" | "reveal" | "playing" | "meeting" | "ejection" | "over";
